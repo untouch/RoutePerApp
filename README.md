@@ -1,0 +1,165 @@
+# RoutePerApp
+
+<p align="center">
+  <img src="assets/logo.png" width="260" alt="RoutePerApp">
+</p>
+
+<p align="center">
+  Give each program its own way out to the internet: Wi-Fi, Ethernet, or the plain Windows route.
+</p>
+
+<p align="center">
+  <a href="#build"><img src="https://img.shields.io/badge/build-MSVC%20C%2B%2B17-blue" alt="Build: MSVC C++17"></a>
+  <a href="#build"><img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue" alt="Platform: Windows 10 or 11"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License: GPL-3.0"></a>
+</p>
+
+---
+
+Windows chooses one network adapter and keeps using it for everything as long as the interface
+is up. If you are connected over Wi-Fi and Ethernet at the same time, that means every program
+shares whichever adapter Windows happened to prefer. Some programs let you pick an adapter, most
+do not, and a system-wide route change affects programs you did not want to move.
+
+RoutePerApp assigns the adapter per program. You drag a program from the process list onto the
+Wi-Fi card, the Ethernet card, or the "standard" card, and the assignment stays in force while
+RoutePerApp runs - for the program that is already running and for the next start of that program.
+
+The interface is German. A second language is welcome; see [Contributing](CONTRIBUTING.md).
+
+## What it does
+
+- **Per-program routing** - Wi-Fi, Ethernet, or the normal Windows route, chosen per executable.
+- **Assignments outlive the program** - rules are stored, matched again on every scan, and applied
+  to programs that start later.
+- **One default route for everything else** - programs without their own rule follow a default you
+  pick (Windows standard, Wi-Fi, or Ethernet).
+- **32-bit and 64-bit targets** - both helper DLLs are built and chosen by target bitness.
+- **Runs in the background** - closing the window hides it to the notification area; routing keeps
+  working. Exit explicitly from the tray menu or File -> Exit.
+- **Autostart as a scheduled task** - a task in Task Scheduler, because Run-key entries do not
+  start programs that ask for administrator rights.
+- **Global shortcuts** - Ctrl+Alt+W / Ctrl+Alt+L / Ctrl+Alt+S route the window that is in front,
+  Ctrl+Alt+H brings RoutePerApp back.
+- **No VPN, no TUN adapter, no proxy, no kernel driver.**
+
+## How it works
+
+Each assignment is a rule: process image name, optional path, route mode, adapter GUID. The
+engine resolves rules against adapters, injects the matching helper DLL into the target process,
+and the helper intercepts the Winsock calls that choose a source address (`bind`, `connect`,
+`sendto`, `WSAConnect`, `WSASendTo`) and rebinds sockets to the chosen adapter.
+
+State is shared through plain files in `C:\ProgramData\RoutePerApp`, so the engine, the injected
+helper and the interface never need a privileged channel:
+
+```
+C:\ProgramData\RoutePerApp\
+  rules.json        assignments, edited by the interface
+  rules.json.bak    previous copy, used if the live file is damaged
+  resolved.json     what the engine decided, read by the helper DLL
+  hook.dll          helper for 64-bit targets
+  hook32.dll        helper for 32-bit targets
+  settings.json     window state, autostart and shortcut switches
+```
+
+Both hooks are copied next to `routeperapp.exe` on first start; the interface keeps them up to
+date when you build again.
+
+## Build
+
+Needs Windows 10 or 11 and Visual Studio Build Tools 2019 or 2022 with the "Desktop development
+with C++" workload. No third-party libraries, no package manager, no project file.
+
+```
+build.cmd             everything (tests + program)
+build.cmd exe         program and both helper DLLs
+build.cmd tests       tests only
+build.cmd probe       additionally a build without the elevation request, used by automated tests
+```
+
+`build.cmd` finds `vcvars64.bat` for VS 2019/2022 (BuildTools, Community, Professional,
+Enterprise) and derives the 32-bit environment for the 32-bit helper. The C runtime is
+statically linked, so the resulting files need no redistributable.
+
+| Output | What it is |
+|---|---|
+| `build\routeperapp.exe` | the program (64-bit, requests administrator rights, manifest in `app.manifest`) |
+| `build\hook.dll` | helper for 64-bit targets |
+| `build\hook32.dll` | helper for 32-bit targets |
+| `build\tests.exe`, `gui_tests.exe`, `inject_tests.exe`, `srtarget.exe` | test programs |
+
+## Using it
+
+1. Start `routeperapp.exe`. Windows asks for administrator rights; without them, programs of
+   other users and services cannot be reached.
+2. Drag a program from the list onto a card, or use the context menu of the list.
+3. Close the window when you are done: RoutePerApp hides to the notification area and keeps
+   routing, so programs started later are handled as well.
+4. Exit with the tray icon menu (right click) or File -> Exit.
+
+Global shortcuts:
+
+| Shortcut | Effect |
+|---|---|
+| Ctrl+Alt+W | route the window in front over Wi-Fi |
+| Ctrl+Alt+L | route the window in front over Ethernet |
+| Ctrl+Alt+S | route the window in front over the normal Windows route |
+| Ctrl+Alt+H | bring the RoutePerApp window back |
+
+A shortcut also brings RoutePerApp to the front: shortcuts are attached to a window, and a
+window that stays hidden cannot act on them.
+
+## Testing
+
+```
+build\tests.exe          core: rules, adapter choice, file handling
+build\gui_tests.exe      interface logic: zones, undo, drag decisions
+build\inject_tests.exe   real injection into srtarget.exe, measured per adapter
+```
+
+Current counts: 334 core checks, 129 interface checks, 89 integration checks, no failures.
+
+The flow that is otherwise only observable from outside is built into the program:
+
+```
+routeperapp.exe --selbsttest
+```
+
+It checks the window, the menus, the shortcuts, hide-to-tray, the tray message, restore, and the
+tray menu. The exit code is the number of failed points, details go to `selbsttest.log` in the
+data folder. That is deliberately inside the program: an external script that posts messages into
+another program's window is exactly what anti-virus heuristics report as malicious.
+
+## Known limits
+
+Read these before reporting a problem.
+
+- **DNS lookups are not routed.** Name resolution is done by the Windows DNS Client service, not
+  by the program, so those requests use the default route. Applications that resolve through
+  their own stack do follow the assignment.
+- **Chromium browsers are not verified.** Chromium moved networking into a separate process and
+  blocks injected DLLs in parts of itself. The rule can match, the effect can be missing. If you
+  test this, please report what you measured.
+- **Connections opened before the helper is in place keep their old route.** Re-bind a program
+  with Program -> Rebind running programs after changing an assignment.
+- **Dragging files from Explorer onto a card does not work while elevated.** Windows does not
+  allow a lower-integrity process (Explorer) to drag onto a higher-integrity one. Dragging inside
+  RoutePerApp is unaffected.
+- **Programs with anti-cheat or anti-injection may refuse the helper**, and an injected DLL can be
+  mistaken for a cheat. Use it on such programs at your own risk.
+- **Anti-virus products may flag the files.** Process injection is what this program does, and the
+  behaviour is the same one malware uses. Build from source if you want a binary you trust, and
+  see [Security](SECURITY.md).
+- **Programs that do not use Winsock** (rare) are not affected.
+
+## Command line
+
+Only one switch exists today: `--selbsttest`. Scripted control (`list`, `add`, `remove`,
+`default`, `launch --via`) is designed but not implemented; until then, rules are edited in the
+interface, and `rules.json` is the file the engine reloads on change.
+
+## License
+
+GPL-3.0, see [LICENSE](LICENSE). The source, the tests and the build script are all in this
+repository; nothing here is downloaded at build time.

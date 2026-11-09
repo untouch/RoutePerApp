@@ -1,0 +1,26 @@
+# Bau- und Laufzeitergebnisse
+build/
+_fertig/
+*.obj
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.exp
+*.res
+
+# Hilfverzeichnisse und voruebergehende Dateien
+.tmpp/
+_sicherung/
+_backup_src/
+*.tmp
+*.bak
+*.lnk
+
+# Symbole aus dem Bildbau, wenn sie neu erzeugt werden
+build/obj/
+*.jfif
+
+# Werkzeuge von Visual Studio
+.vs/
+*.user
