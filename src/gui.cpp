@@ -43,7 +43,7 @@ constexpr UINT TRAY_UID = 1;
 } // namespace ids
 
 // Fassung an einer Stelle; steht ausserdem in app.rc (Dateieigenschaften) und im Selbsttest-Log.
-static const wchar_t* kAppVersion = L"1.0";
+static const wchar_t* kAppVersion = RPA_VERSION_TEXT_W;
 
 // Wird gemeldet, wenn die Taskleiste neu gestartet wurde (Explorer abgestürzt o. ä.).
 static UINT g_taskbarCreated = 0;

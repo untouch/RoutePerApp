@@ -1,5 +1,5 @@
 // Datei-Eigenschaften und Symbol von routeperapp.exe.
-// Die Fassung steht auch in gui.cpp (kAppVersion) - beide beim Veröffentlichen anpassen.
+// Die Fassung steht in src\resource.hpp - dort anpassen, hier wird sie gelesen.
 #include <winver.h>
 #include "src/resource.hpp"
 
@@ -9,8 +9,8 @@ IDI_APP ICON "app.ico"
 IDR_LANG_EN RCDATA "lang\en.json"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,0
- PRODUCTVERSION 1,0,0,0
+ FILEVERSION RPA_VERSION
+ PRODUCTVERSION RPA_VERSION
  FILEFLAGSMASK 0x3fL
  FILEFLAGS 0
  FILEOS VOS_NT_WINDOWS32
@@ -23,12 +23,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName",      "RoutePerApp"
             VALUE "FileDescription",  "RoutePerApp - network route per program"
-            VALUE "FileVersion",      "1.0"
+            VALUE "FileVersion",      RPA_VERSION_TEXT
             VALUE "InternalName",     "routeperapp"
             VALUE "LegalCopyright",   "Copyright (C) 2026 Keven Hall"
             VALUE "OriginalFilename", "routeperapp.exe"
             VALUE "ProductName",      "RoutePerApp"
-            VALUE "ProductVersion",   "1.0"
+            VALUE "ProductVersion",   RPA_VERSION_TEXT
         END
     END
     BLOCK "VarFileInfo"
