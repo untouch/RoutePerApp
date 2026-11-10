@@ -112,7 +112,12 @@ static unsigned long ProbeUdpIfIndex(const sockaddr_in& dest, SOCKET* keepOut) {
 static bool SendUdpOnce(SOCKET s, const sockaddr_in& dest) {
     static const char payload[4] = { 's', 'r', 't', '!' };
     int r = sendto(s, payload, 4, 0, reinterpret_cast<const sockaddr*>(&dest), sizeof(dest));
-    return r != SOCKET_ERROR;
+    if (r != SOCKET_ERROR) return true;
+    // Die Adapter in diesem Abschnitt sind frei erfunden, ein Paket kann deshalb nicht
+    // herauskommen. Gezählt wird der Versuch: der Hook muss den Socket beim Senden
+    // umhängen, ankommen muss nichts. Ohne Route ist der Versand trotzdem vorbei.
+    const int e = WSAGetLastError();
+    return e == WSAEHOSTUNREACH || e == WSAENETUNREACH || e == WSAEHOSTDOWN || e == WSAENETDOWN;
 }
 
 static unsigned long ReadIfIndex(SOCKET s) {

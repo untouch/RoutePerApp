@@ -79,6 +79,7 @@ T = {
     ' bewusst ohne Bindung': ' deliberately unbound',
     ' ohne eigene Regel': ' with no rule of their own',
     'hierher ziehen – Zuordnung aufheben': 'drop here to remove the assignment',
+    ' (getrennt)': ' (disconnected)',
 
     # Taskleisten-Menue und Statuszeile
     'Fenster holen': 'Show window',
