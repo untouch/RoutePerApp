@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
 
-  <!-- Weicht die Sicherheitsstufe hoch: ohne Administratorrechte kommt SoftRouter
+  <!-- Setzt die Sicherheitsstufe hoch: ohne Administratorrechte kommt RoutePerApp
        nicht in Programme hinein, die als Administrator laufen (Dienste, Spiele,
        Werkzeuge). Windows fragt deshalb beim Start nach. -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
