@@ -8,6 +8,7 @@ rem  build.cmd tests      nur die Tests
 rem  build.cmd probe      zusaetzlich eine Datei ohne Erhoehungsvermerk - nur fuer
 rem                       automatische Ablauf-Tests, weil ein erhohtes Programm von
 rem                       einem normalen Testfenster nicht gesteuert werden kann
+rem  build.cmd shot       kleines Werkzeug fuer das Bildschirmbild der README
 rem
 rem  Ergebnis:
 rem    build\routeperapp.exe   Oberflaeche (64 Bit)  <- die ausfuehrbare Datei
@@ -50,8 +51,9 @@ rc /nologo /fo build\app.res app.rc || exit /b 1
 if "%MODE%"=="tests" goto :tests
 if "%MODE%"=="exe"   goto :exe
 if "%MODE%"=="probe" goto :probe
+if "%MODE%"=="shot"  goto :shot
 if "%MODE%"=="all"   goto :all
-echo unbekanntes Ziel: %MODE%   (moeglich: all, exe, tests, probe)
+echo unbekanntes Ziel: %MODE%   (moeglich: all, exe, tests, probe, shot)
 exit /b 2
 
 :tests
@@ -77,9 +79,11 @@ echo [3] Zielprogramm fuer Integrationstests
 cl %FLAGS% /Fe:build\srtarget.exe src\srtarget.cpp /Fo:build\ /link ws2_32.lib || exit /b 1
 echo [4] Injektionstests
 cl %FLAGS% /Fe:build\inject_tests.exe tests\test_inject.cpp src\core.cpp src\lang.cpp /Fo:build\ /link %LIBS% || exit /b 1
-echo [5] Hook-Bibliothek 64 Bit
+echo [5] Bildschirmbild-Werkzeug
+cl %FLAGS% /Fe:build\shot.exe tools\shot.cpp /Fo:build\ /link %GUILIBS% %LIBS% gdiplus.lib || exit /b 1
+echo [6] Hook-Bibliothek 64 Bit
 cl %FLAGS% /LD /Fe:build\hook.dll src\hook.cpp src\core.cpp src\lang.cpp /Fo:build\ /link %LIBS% || exit /b 1
-echo [6] Oberflaeche
+echo [7] Oberflaeche
 cl %FLAGS% /Fe:build\routeperapp.exe src\gui.cpp src\gui_drag.cpp src\gui_logic.cpp src\core.cpp src\lang.cpp /Fo:build\ /link /subsystem:windows /MANIFEST:EMBED /MANIFESTUAC:NO /MANIFESTINPUT:app.manifest build\app.res %GUILIBS% %LIBS% || exit /b 1
 rem fällt nach unten durch zum 32-Bit-Hook
 
@@ -88,8 +92,13 @@ rem 32-Bit-Hook: eigene Builder-Umgebung und eigene Objektdateien.
 if not exist build\x86 mkdir build\x86
 call %VCVARS32% >nul 2>&1
 if errorlevel 1 exit /b 2
-echo [7] Hook-Bibliothek 32 Bit
+echo [8] Hook-Bibliothek 32 Bit
 cl %FLAGS% /LD /Fe:build\hook32.dll src\hook.cpp src\core.cpp src\lang.cpp /Fo:build\x86\ /link %LIBS% || exit /b 1
+goto :done
+
+:shot
+rem Bild fuer die README: malt das eigene Fenster in eine PNG-Datei.
+cl %FLAGS% /Fe:build\shot.exe tools\shot.cpp /Fo:build\ /link %GUILIBS% %LIBS% gdiplus.lib || exit /b 1
 goto :done
 
 :probe

@@ -45,6 +45,10 @@ source is the translation key, the values sit in JSON files:
 boundary of the shared folder) and `CONTRIBUTING.md` (build loop, conventions, translations) are
 new; the README has a Language section and answers to the questions people actually ask.
 
+The README now shows the window itself: `assets\screenshot-en.png` and `assets\screenshot-de.png`.
+They come from `tools\shot.cpp` (`build.cmd shot`), which paints the program's own window into a
+PNG - no capture script involved, and nothing is asked of any other program.
+
 ### Next
 
 - Write access for ordinary users in `C:\ProgramData\RoutePerApp` is a local privilege escalation

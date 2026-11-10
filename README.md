@@ -31,6 +31,14 @@ the adapter and the traffic over it, so an assignment can be measured instead of
 
 The interface is available in German and English, switched from a menu.
 
+<p align="center">
+  <img src="assets/screenshot-en.png" width="860"
+       alt="RoutePerApp window: running programs in a list on the left, Wi-Fi, Ethernet and standard route cards on the right, adapter and traffic per program in the columns">
+  <br>
+  <em>The window: programs on the left, the three cards on the right. The columns show the adapter
+  a program actually uses today and the traffic over it.</em>
+</p>
+
 ## Contents
 
 - [What it does](#what-it-does)
@@ -275,6 +283,13 @@ heuristics report as malicious.
 
 The interface is German first, English second. Switch it with ? -> Sprache -> English, or start
 with `--sprache en`. The choice is stored in `settings.json`.
+
+<p align="center">
+  <img src="assets/screenshot-de.png" width="860"
+       alt="RoutePerApp window in German: program list on the left, Wi-Fi, Ethernet and standard route cards on the right">
+  <br>
+  <em>The same window in German.</em>
+</p>
 
 The German wording in the source is the key, the translation is the value:
 

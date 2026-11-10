@@ -17,6 +17,10 @@ build\routeperapp_probe.exe --selbsttest   window, tray, shortcuts, language
 `build.cmd` finds Visual Studio Build Tools 2019 or 2022 by itself and needs no project file.
 Everything is built with `/MT`, so the result does not need a redistributable.
 
+When an interface change is worth a picture: `build.cmd shot` builds `build\shot.exe`, which writes
+the RoutePerApp window to a PNG. The images in the README come from that, so a screenshot is part
+of the build loop rather than a manual step.
+
 The last command is the one that catches most mistakes: it starts the real window, hides it,
 clicks the tray icon, checks the menus, switches the interface to English and back, and returns the
 number of failed points as exit code. It runs without administrator rights through the probe
