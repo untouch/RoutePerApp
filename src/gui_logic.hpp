@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "core.hpp"
+#include "lang.hpp"
 
 namespace srgui {
 

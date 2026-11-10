@@ -984,6 +984,93 @@ static void TestResolvedFileRoundtrip() {
     EndSection();
 }
 
+// ---------------------------------------------------------------- Sprache
+
+static void TestLanguageLayer() {
+    Begin(L"Sprache: Uebersetzung, Vorlage und Dateiueberschreibung");
+    std::wstring err;
+    const std::wstring dir = TempDir();
+
+    CHECK_EQ_INT(lang::Available().size(), 2);
+
+    // Deutsch laesst jeden Text unveraendert stehen.
+    lang::Init(L"de", dir, dir, &err);
+    CHECK_EQ_STR(lang::Language(), L"de");
+    CHECK_EQ_STR(lang::T(L"Neu laden"), L"Neu laden");
+    CHECK_EQ_INT(lang::MissCount(), 0);
+
+    // Unbekannter Code faellt auf Deutsch zurueck.
+    lang::Init(L"zz", dir, dir, &err);
+    CHECK_EQ_STR(lang::Language(), L"de");
+
+    lang::Init(L"en", dir, dir, &err);
+    CHECK_EQ_STR(lang::Language(), L"en");
+    lang::ForgetMissing();
+    CHECK_EQ_STR(lang::T(L"Ein Text ohne Uebersetzung"), L"Ein Text ohne Uebersetzung");
+    CHECK_EQ_INT(lang::MissCount(), 1);
+    lang::ForgetMissing();
+    CHECK_EQ_INT(lang::MissCount(), 0);
+
+    // Sprachdatei: Schluessel = Text im Programm, Wert = Uebersetzung.
+    // WriteTextFileAtomic schreibt mit BOM - die Datei muss trotzdem gelesen werden.
+    const std::wstring json =
+        L"{\"_Hinweis\":\"Kommentar, keine Beschriftung\","
+        L"\"_Sprache\":\"en\","
+        L"\"Datei\":\"File\","
+        L"\"Leerer Wert\":\"\","
+        L"\"markierte Programme  \u2192  WLAN\":\"selected programs  \u2192  Wi-Fi\","
+        L"\"%d Programme zugeordnet\":\"%d programs assigned\","
+        L"\"Adapter %s heute\":\"adapter %s today\"}";
+    CHECK(WriteTextFileAtomic(dir + L"\\language.en.json", json, err));
+
+    lang::Init(L"en", dir, dir, &err);
+    CHECK_MSG(err.empty(), L"Sprachdatei wurde nicht gelesen: " + err);
+    CHECK_EQ_STR(lang::T(L"Datei"), L"File");
+    CHECK_EQ_STR(lang::T(L"markierte Programme  \u2192  WLAN"), L"selected programs  \u2192  Wi-Fi");
+    // Ein leerer Wert ueberschreibt nicht, sondern laesst den Quelltext stehen.
+    CHECK_EQ_STR(lang::T(L"Leerer Wert"), L"Leerer Wert");
+    // Mit Anfangsstrich wird nicht uebersetzt, das ist als Kommentar gedacht.
+    CHECK_EQ_STR(lang::T(L"_Hinweis"), L"_Hinweis");
+
+    // Die Adresse muss gueltig und gleich bleiben, weil Windows-Texte weitergereicht werden.
+    const wchar_t* zuerst = lang::T(L"Datei");
+    const wchar_t* spaeter = lang::T(L"Datei");
+    CHECK_MSG(zuerst == spaeter, L"Adresse der Uebersetzung wechselt zwischen Aufrufen");
+    CHECK_EQ_STR(std::wstring(zuerst), L"File");
+
+    // Gesetze Texte mit Werten einschieben.
+    CHECK_EQ_STR(lang::Fill(L"%d Programme zugeordnet", 3), L"3 programs assigned");
+    CHECK_EQ_STR(lang::Fill(L"Adapter %s heute", L"WLAN"), L"adapter WLAN today");
+    CHECK_EQ_STR(lang::Fill(L"Datei"), L"File");
+
+    // Vorlage enthalten jeden gebrauchten Text, damit Uebersetzungen aussen ergaenzt
+    // werden koennen, und laesst sich wieder einlesen.
+    std::wstring vorlage = dir + L"\\language.vorlage.json";
+    CHECK(lang::WriteTemplate(vorlage, &err));
+    std::wstring text;
+    CHECK(ReadTextFile(vorlage, text, err));
+    CHECK(text.find(L"Ein Text ohne Uebersetzung") != std::wstring::npos);
+    CHECK(text.find(L"\"File\"") != std::wstring::npos);
+
+    // Eine Datei neben der Programmdatei gilt, die im Datenverzeichnis gewinnt.
+    std::wstring unter = dir + L"\\nebene";
+    EnsureDir(unter, err);
+    CHECK(WriteTextFileAtomic(unter + L"\\language.en.json",
+                              L"{\"Datei\":\"Ordner\",\"Nur hier\":\"Only here\"}", err));
+    lang::Init(L"en", unter, dir, &err);
+    CHECK_EQ_STR(lang::T(L"Nur hier"), L"Only here");
+    CHECK_EQ_STR(lang::T(L"Datei"), L"File");   // aus dem Datenverzeichnis
+
+    // Eine unlesbare Sprachdatei muss gemeldet werden, nicht verschwinden.
+    CHECK(WriteTextFileAtomic(dir + L"\\language.en.json", L"{ ", err));
+    err.clear();
+    lang::Init(L"en", dir, dir, &err);
+    CHECK_MSG(!err.empty(), L"kaputte Sprachdatei bleibt ungemeldet");
+    lang::Init(L"de", dir, dir, &err);
+    CHECK_EQ_STR(lang::T(L"Datei"), L"Datei");
+    EndSection();
+}
+
 // ----------------------------------------------------------------Haupt
 
 int main() {
@@ -1015,6 +1102,7 @@ int main() {
     TestLiveAdapters();
     TestLiveProcessesAndTcp();
     TestResolvedFileRoundtrip();
+    TestLanguageLayer();
 
     wprintf(L"\n=========================================\n");
     wprintf(L"Prüfungen: %d   Fehler: %d\n", g_checks, g_failed);

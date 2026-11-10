@@ -81,16 +81,21 @@ const Table* Find(const wchar_t* code) {
     return nullptr;
 }
 
-void MergeJson(const std::wstring& text) {
-    sr::JsonPtr root;
-    sr::JsonParseResult r = sr::JsonParse(text, root);
-    if (!r.ok || !root || !root->isObject()) return;
+void MergeRoot(const sr::JsonPtr& root) {
+    if (!root || !root->isObject()) return;
     for (const auto& kv : root->obj) {
         if (kv.second && kv.second->isString() && !kv.second->str.empty() &&
             !kv.first.empty() && kv.first[0] != L'_') {
             g_map[kv.first] = kv.second->str;
         }
     }
+}
+
+void MergeJson(const std::wstring& text) {
+    sr::JsonPtr root;
+    sr::JsonParseResult r = sr::JsonParse(text, root);
+    if (!r.ok) return;
+    MergeRoot(root);
 }
 
 void LoadEmbedded(const wchar_t* code) {
@@ -157,6 +162,47 @@ const wchar_t* T(const wchar_t* source) {
     return source;
 }
 
+namespace {
+std::wstring Format(const wchar_t* key, const wchar_t* a, const wchar_t* b, int n, int m,
+                    int kind) {
+    // kind: 0 keine, 1 string, 2 zwei strings, 3 zahl, 4 zahl+string, 5 string+zahl, 6 zwei zahlen
+    const size_t room = 1024;
+    std::wstring out(room, 0);
+    if (kind == 0) return std::wstring(T(key));   // ohne Angaben: kein Formatlaufen
+    int wrote = -1;
+    switch (kind) {
+        case 1: wrote = _scwprintf(T(key), a); break;
+        case 2: wrote = _scwprintf(T(key), a, b); break;
+        case 3: wrote = _scwprintf(T(key), n); break;
+        case 4: wrote = _scwprintf(T(key), n, a); break;
+        case 5: wrote = _scwprintf(T(key), a, n); break;
+        case 6: wrote = _scwprintf(T(key), n, m); break;
+    }
+    if (wrote < 0) return std::wstring(T(key));
+    if (static_cast<size_t>(wrote) + 1 > room) out.resize(static_cast<size_t>(wrote) + 1);
+    switch (kind) {
+        case 1: swprintf(&out[0], out.size(), T(key), a); break;
+        case 2: swprintf(&out[0], out.size(), T(key), a, b); break;
+        case 3: swprintf(&out[0], out.size(), T(key), n); break;
+        case 4: swprintf(&out[0], out.size(), T(key), n, a); break;
+        case 5: swprintf(&out[0], out.size(), T(key), a, n); break;
+        case 6: swprintf(&out[0], out.size(), T(key), n, m); break;
+    }
+    out.resize(wcslen(out.c_str()));
+    return out;
+}
+}  // namespace
+
+std::wstring Fill(const wchar_t* key) { return Format(key, L"", L"", 0, 0, 0); }
+std::wstring Fill(const wchar_t* key, const wchar_t* a) { return Format(key, a, L"", 0, 0, 1); }
+std::wstring Fill(const wchar_t* key, const wchar_t* a, const wchar_t* b) {
+    return Format(key, a, b, 0, 0, 2);
+}
+std::wstring Fill(const wchar_t* key, int n) { return Format(key, L"", L"", n, 0, 3); }
+std::wstring Fill(const wchar_t* key, int n, const wchar_t* a) { return Format(key, a, L"", n, 0, 4); }
+std::wstring Fill(const wchar_t* key, const wchar_t* a, int n) { return Format(key, a, L"", n, 0, 5); }
+std::wstring Fill(const wchar_t* key, int n, int m) { return Format(key, L"", L"", n, m, 6); }
+
 std::vector<std::wstring> MissingKeys() { return g_missing; }
 size_t MissCount() { return g_missing.size(); }
 void ForgetMissing() { g_missing.clear(); g_missingSeen.clear(); }
@@ -170,7 +216,7 @@ bool MergeFile(const std::wstring& path, std::wstring* problem) {
         if (problem) *problem = L"Sprachdatei " + path + L" ist nicht lesbar";
         return false;
     }
-    MergeJson(text);
+    MergeRoot(root);
     return true;
 }
 

@@ -56,31 +56,31 @@ exit /b 2
 
 :tests
 echo [1] Tests des Kerns
-cl %FLAGS% /Fe:build\tests.exe tests\test_core.cpp /Fo:build\ /link %LIBS% || exit /b 1
+cl %FLAGS% /Fe:build\tests.exe tests\test_core.cpp src\lang.cpp /Fo:build\ /link %LIBS% || exit /b 1
 echo [2] Tests der Oberflaeche
-cl %FLAGS% /Fe:build\gui_tests.exe tests\test_gui.cpp src\gui_logic.cpp src\core.cpp /Fo:build\ /link %LIBS% || exit /b 1
+cl %FLAGS% /Fe:build\gui_tests.exe tests\test_gui.cpp src\gui_logic.cpp src\core.cpp src\lang.cpp /Fo:build\ /link %LIBS% || exit /b 1
 goto :done
 
 :exe
 echo [1] Hook-Bibliothek 64 Bit
-cl %FLAGS% /LD /Fe:build\hook.dll src\hook.cpp src\core.cpp /Fo:build\ /link %LIBS% || exit /b 1
+cl %FLAGS% /LD /Fe:build\hook.dll src\hook.cpp src\core.cpp src\lang.cpp /Fo:build\ /link %LIBS% || exit /b 1
 echo [2] Oberflaeche
-cl %FLAGS% /Fe:build\routeperapp.exe src\gui.cpp src\gui_drag.cpp src\gui_logic.cpp src\core.cpp /Fo:build\ /link /subsystem:windows /MANIFEST:EMBED /MANIFESTUAC:NO /MANIFESTINPUT:app.manifest build\app.res %GUILIBS% %LIBS% || exit /b 1
+cl %FLAGS% /Fe:build\routeperapp.exe src\gui.cpp src\gui_drag.cpp src\gui_logic.cpp src\core.cpp src\lang.cpp /Fo:build\ /link /subsystem:windows /MANIFEST:EMBED /MANIFESTUAC:NO /MANIFESTINPUT:app.manifest build\app.res %GUILIBS% %LIBS% || exit /b 1
 goto :hook32
 
 :all
 echo [1] Tests des Kerns
-cl %FLAGS% /Fe:build\tests.exe tests\test_core.cpp /Fo:build\ /link %LIBS% || exit /b 1
+cl %FLAGS% /Fe:build\tests.exe tests\test_core.cpp src\lang.cpp /Fo:build\ /link %LIBS% || exit /b 1
 echo [2] Tests der Oberflaeche
-cl %FLAGS% /Fe:build\gui_tests.exe tests\test_gui.cpp src\gui_logic.cpp src\core.cpp /Fo:build\ /link %LIBS% || exit /b 1
+cl %FLAGS% /Fe:build\gui_tests.exe tests\test_gui.cpp src\gui_logic.cpp src\core.cpp src\lang.cpp /Fo:build\ /link %LIBS% || exit /b 1
 echo [3] Zielprogramm fuer Integrationstests
 cl %FLAGS% /Fe:build\srtarget.exe src\srtarget.cpp /Fo:build\ /link ws2_32.lib || exit /b 1
 echo [4] Injektionstests
-cl %FLAGS% /Fe:build\inject_tests.exe tests\test_inject.cpp src\core.cpp /Fo:build\ /link %LIBS% || exit /b 1
+cl %FLAGS% /Fe:build\inject_tests.exe tests\test_inject.cpp src\core.cpp src\lang.cpp /Fo:build\ /link %LIBS% || exit /b 1
 echo [5] Hook-Bibliothek 64 Bit
-cl %FLAGS% /LD /Fe:build\hook.dll src\hook.cpp src\core.cpp /Fo:build\ /link %LIBS% || exit /b 1
+cl %FLAGS% /LD /Fe:build\hook.dll src\hook.cpp src\core.cpp src\lang.cpp /Fo:build\ /link %LIBS% || exit /b 1
 echo [6] Oberflaeche
-cl %FLAGS% /Fe:build\routeperapp.exe src\gui.cpp src\gui_drag.cpp src\gui_logic.cpp src\core.cpp /Fo:build\ /link /subsystem:windows /MANIFEST:EMBED /MANIFESTUAC:NO /MANIFESTINPUT:app.manifest build\app.res %GUILIBS% %LIBS% || exit /b 1
+cl %FLAGS% /Fe:build\routeperapp.exe src\gui.cpp src\gui_drag.cpp src\gui_logic.cpp src\core.cpp src\lang.cpp /Fo:build\ /link /subsystem:windows /MANIFEST:EMBED /MANIFESTUAC:NO /MANIFESTINPUT:app.manifest build\app.res %GUILIBS% %LIBS% || exit /b 1
 rem fällt nach unten durch zum 32-Bit-Hook
 
 :hook32
@@ -89,12 +89,12 @@ if not exist build\x86 mkdir build\x86
 call %VCVARS32% >nul 2>&1
 if errorlevel 1 exit /b 2
 echo [7] Hook-Bibliothek 32 Bit
-cl %FLAGS% /LD /Fe:build\hook32.dll src\hook.cpp src\core.cpp /Fo:build\x86\ /link %LIBS% || exit /b 1
+cl %FLAGS% /LD /Fe:build\hook32.dll src\hook.cpp src\core.cpp src\lang.cpp /Fo:build\x86\ /link %LIBS% || exit /b 1
 goto :done
 
 :probe
 rem Wie oben, aber ohne das Erhoehungsvermerk im eingebetteten Merkblatt - nur fuer Tests.
-cl %FLAGS% /Fe:build\routeperapp_probe.exe src\gui.cpp src\gui_drag.cpp src\gui_logic.cpp src\core.cpp /Fo:build\ /link /subsystem:windows "/MANIFESTUAC:level='asInvoker' uiAccess='false'" build\app.res %GUILIBS% %LIBS% || exit /b 1
+cl %FLAGS% /Fe:build\routeperapp_probe.exe src\gui.cpp src\gui_drag.cpp src\gui_logic.cpp src\core.cpp src\lang.cpp /Fo:build\ /link /subsystem:windows "/MANIFESTUAC:level='asInvoker' uiAccess='false'" build\app.res %GUILIBS% %LIBS% || exit /b 1
 
 :done
 echo.

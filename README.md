@@ -25,7 +25,8 @@ RoutePerApp assigns the adapter per program. You drag a program from the process
 Wi-Fi card, the Ethernet card, or the "standard" card, and the assignment stays in force while
 RoutePerApp runs - for the program that is already running and for the next start of that program.
 
-The interface is German. A second language is welcome; see [Contributing](CONTRIBUTING.md).
+The interface speaks German and English, switched from a menu. The wording lives in JSON files, so
+another language can be added without touching code - see [Language](#language).
 
 ## What it does
 
@@ -41,6 +42,8 @@ The interface is German. A second language is welcome; see [Contributing](CONTRI
   start programs that ask for administrator rights.
 - **Global shortcuts** - Ctrl+Alt+W / Ctrl+Alt+L / Ctrl+Alt+S route the window that is in front,
   Ctrl+Alt+H brings RoutePerApp back.
+- **German and English interface** - switched from the ? menu and remembered; the wording lives in
+  JSON files, so a translation can be corrected without building again.
 - **No VPN, no TUN adapter, no proxy, no kernel driver.**
 
 ## How it works
@@ -61,6 +64,8 @@ C:\ProgramData\RoutePerApp\
   hook.dll          helper for 64-bit targets
   hook32.dll        helper for 32-bit targets
   settings.json     window state, autostart and shortcut switches
+  language.en.json  optional translation override, see Language
+  selbsttest.log    result of the built-in self-test
 ```
 
 Both hooks are copied next to `routeperapp.exe` on first start; the interface keeps them up to
@@ -110,6 +115,33 @@ Global shortcuts:
 A shortcut also brings RoutePerApp to the front: shortcuts are attached to a window, and a
 window that stays hidden cannot act on them.
 
+## Language
+
+The interface is German first, English second. Switch it with ? -> Sprache -> English, or start
+with `--sprache en`. The choice is stored in `settings.json`.
+
+The German wording in the source is the key, the translation is the value:
+
+```json
+{
+  "Datei": "File",
+  "markierte Programme  \u2192  WLAN": "selected programs  \u2192  Wi-Fi"
+}
+```
+
+That has two consequences worth knowing:
+
+- `lang\en.json` is compiled into the program, and a file called `language.en.json` next to the
+  executable or in `C:\ProgramData\RoutePerApp` overrides it. Correcting a wording therefore needs
+  no rebuild: edit the file and restart. Adding a whole new language is described in
+  [Contributing](CONTRIBUTING.md).
+- A key that has no translation falls back to the German text and is counted. The self-test fails
+  while a visible label is still untranslated, and writes every text the program uses into
+  `language.vorlage.json` in the data folder so the missing values can be filled in elsewhere.
+
+`tools\build_en.py` regenerates `lang\en.json` from that template, keeping the keys identical to
+the source text.
+
 ## Testing
 
 ```
@@ -118,7 +150,7 @@ build\gui_tests.exe      interface logic: zones, undo, drag decisions
 build\inject_tests.exe   real injection into srtarget.exe, measured per adapter
 ```
 
-Current counts: 334 core checks, 129 interface checks, 89 integration checks, no failures.
+Current counts: 364 core checks, 129 interface checks, 89 integration checks, no failures.
 
 The flow that is otherwise only observable from outside is built into the program:
 
@@ -127,9 +159,11 @@ routeperapp.exe --selbsttest
 ```
 
 It checks the window, the menus, the shortcuts, hide-to-tray, the tray message, restore, and the
-tray menu. The exit code is the number of failed points, details go to `selbsttest.log` in the
-data folder. That is deliberately inside the program: an external script that posts messages into
-another program's window is exactly what anti-virus heuristics report as malicious.
+tray menu. It also switches the whole interface to English and fails if any visible label, menu,
+column heading or caption is left untranslated. The exit code is the number of failed points,
+details go to `selbsttest.log` in the data folder. That is deliberately inside the program: an
+external script that posts messages into another program's window is exactly what anti-virus
+heuristics report as malicious.
 
 ## Known limits
 
@@ -155,9 +189,9 @@ Read these before reporting a problem.
 
 ## Command line
 
-Only one switch exists today: `--selbsttest`. Scripted control (`list`, `add`, `remove`,
-`default`, `launch --via`) is designed but not implemented; until then, rules are edited in the
-interface, and `rules.json` is the file the engine reloads on change.
+Only two switches exist today: `--selbsttest` and `--sprache de|en`. Scripted control (`list`,
+`add`, `remove`, `default`, `launch --via`) is designed but not implemented; until then, rules are
+edited in the interface, and `rules.json` is the file the engine reloads on change.
 
 ## License
 

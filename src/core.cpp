@@ -1,4 +1,5 @@
 #include "core.hpp"
+#include "lang.hpp"
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -58,9 +59,9 @@ std::wstring LastErrText(unsigned long err) {
 
 std::wstring ModeLabel(RouteMode m) {
     switch (m) {
-    case RouteMode::Wlan:   return L"WLAN (5G)";
-    case RouteMode::Lan:    return L"LAN (Fritzbox)";
-    case RouteMode::Adapter:return L"fester Adapter";
+    case RouteMode::Wlan:   return Tr(L"WLAN (5G)");
+    case RouteMode::Lan:    return Tr(L"LAN (Fritzbox)");
+    case RouteMode::Adapter:return Tr(L"fester Adapter");
     default:                return L"Standard";
     }
 }
@@ -69,7 +70,7 @@ std::wstring KindLabel(AdapterKind k) {
     switch (k) {
     case AdapterKind::Wlan: return L"WLAN";
     case AdapterKind::Lan:  return L"Ethernet";
-    default:                return L"sonstiger Adapter";
+    default:                return Tr(L"sonstiger Adapter");
     }
 }
 
@@ -96,7 +97,7 @@ bool ContainsKeyword(const std::wstring& text, const std::vector<std::wstring>& 
 
 std::wstring FormatRate(long long bytesPerSec) {
     wchar_t buf[64];
-    if (bytesPerSec <= 0) return L"0 B/s";
+    if (bytesPerSec <= 0) return Tr(L"0 B/s");
     double v = static_cast<double>(bytesPerSec);
     const wchar_t* unit = L"B/s";
     if (v >= 1024.0 * 1024.0 * 1024.0) { v /= 1024.0 * 1024.0 * 1024.0; unit = L"GB/s"; }
@@ -109,7 +110,7 @@ std::wstring FormatRate(long long bytesPerSec) {
 
 std::wstring FormatBytes(unsigned long long bytes) {
     wchar_t buf[64];
-    if (bytes == 0) return L"0 B";
+    if (bytes == 0) return Tr(L"0 B");
     double v = static_cast<double>(bytes);
     const wchar_t* unit = L"B";
     if (v >= 1024.0 * 1024.0 * 1024.0) { v /= 1024.0 * 1024.0 * 1024.0; unit = L"GB"; }
@@ -331,16 +332,16 @@ std::vector<std::wstring> Ruleset::Validate() const {
     std::vector<std::wstring> warn;
     std::set<unsigned long long> seen;
     for (const Rule& r : rules) {
-        if (r.id == 0) warn.push_back(L"Regel ohne ID ignoriert: " + r.pattern);
-        else if (!seen.insert(r.id).second) warn.push_back(L"Doppelte Regel-ID " + std::to_wstring(r.id));
+        if (r.id == 0) warn.push_back(Tr(L"Regel ohne ID ignoriert: ") + r.pattern);
+        else if (!seen.insert(r.id).second) warn.push_back(Tr(L"Doppelte Regel-ID ") + std::to_wstring(r.id));
         MatchResult m = MatchRule(r, L"x.exe", L"C:\\x.exe");
         std::wstring pat = TrimW(r.pattern);
         bool onlyWildcards = !pat.empty();
         for (wchar_t c : pat) { if (c != L'*' && c != L'?') { onlyWildcards = false; break; } }
-        if (pat.empty() || onlyWildcards) warn.push_back(L"Regel hat ein unbrauchbares Muster: \"" + r.pattern + L"\"");
+        if (pat.empty() || onlyWildcards) warn.push_back(Tr(L"Regel hat ein unbrauchbares Muster: \"") + r.pattern + L"\"");
         if (r.mode == RouteMode::Adapter) {
             std::wstring g;
-            if (!ParseGuid(r.adapterGuid, g)) warn.push_back(L"Regel " + pat + L" hat keine gültige Adapter-GUID");
+            if (!ParseGuid(r.adapterGuid, g)) warn.push_back(Tr(L"Regel ") + pat + Tr(L" hat keine gültige Adapter-GUID"));
         }
         (void)m;
     }
@@ -370,23 +371,23 @@ JsonPtr Ruleset::ToJson() const {
 }
 
 bool Ruleset::FromJson(const JsonPtr& root, Ruleset& out, std::vector<std::wstring>& warnings) {
-    if (!root || !root->isObject()) { warnings.push_back(L"Wurzel ist kein Objekt"); return false; }
+    if (!root || !root->isObject()) { warnings.push_back(Tr(L"Wurzel ist kein Objekt")); return false; }
     out = Ruleset{};
     out.version = root->intOr(L"version", 1);
     int dm = root->intOr(L"defaultMode", 0);
-    if (dm < 0 || dm > 3) { warnings.push_back(L"Ungültiger Standardmodus, auf Standard gesetzt"); dm = 0; }
+    if (dm < 0 || dm > 3) { warnings.push_back(Tr(L"Ungültiger Standardmodus, auf Standard gesetzt")); dm = 0; }
     out.defaultMode = static_cast<RouteMode>(dm);
     std::wstring dg;
     if (out.defaultMode == RouteMode::Adapter) {
         dg = root->strOr(L"defaultAdapterGuid", L"");
         std::wstring norm;
-        if (!ParseGuid(dg, norm)) { warnings.push_back(L"Standard-Adapter-GUID ungültig, Modus auf Standard"); out.defaultMode = RouteMode::None; }
+        if (!ParseGuid(dg, norm)) { warnings.push_back(Tr(L"Standard-Adapter-GUID ungültig, Modus auf Standard")); out.defaultMode = RouteMode::None; }
         else out.defaultAdapterGuid = norm;
     }
     const JsonPtr* rules = root->find(L"rules");
-    if (!rules || !(*rules) || !(*rules)->isArray()) { warnings.push_back(L"Feld 'rules' fehlt"); return true; }
+    if (!rules || !(*rules) || !(*rules)->isArray()) { warnings.push_back(Tr(L"Feld 'rules' fehlt")); return true; }
     for (const JsonPtr& item : (*rules)->arr) {
-        if (!item || !item->isObject()) { warnings.push_back(L"Regel-Eintrag ist kein Objekt, übersprungen"); continue; }
+        if (!item || !item->isObject()) { warnings.push_back(Tr(L"Regel-Eintrag ist kein Objekt, übersprungen")); continue; }
         Rule r;
         r.pattern = TrimW(item->strOr(L"pattern", L""));
         r.pathPattern = TrimW(item->strOr(L"path", L""));
@@ -397,15 +398,15 @@ bool Ruleset::FromJson(const JsonPtr& root, Ruleset& out, std::vector<std::wstri
         if (item->getNum(L"id", d)) r.id = static_cast<unsigned long long>(d);
         if (item->getNum(L"created", d)) r.created = static_cast<long long>(d);
         int mode = item->intOr(L"mode", 0);
-        if (mode < 0 || mode > 3) { warnings.push_back(L"Regel \"" + r.pattern + L"\" hat ungültigen Modus, übersprungen"); continue; }
+        if (mode < 0 || mode > 3) { warnings.push_back(Tr(L"Regel \"") + r.pattern + Tr(L"\" hat ungültigen Modus, übersprungen")); continue; }
         r.mode = static_cast<RouteMode>(mode);
-        if (r.pattern.empty()) { warnings.push_back(L"Regel ohne Muster übersprungen"); continue; }
+        if (r.pattern.empty()) { warnings.push_back(Tr(L"Regel ohne Muster übersprungen")); continue; }
         bool onlyWildcards = true;
         for (wchar_t c : r.pattern) { if (c != L'*' && c != L'?') { onlyWildcards = false; break; } }
-        if (onlyWildcards) { warnings.push_back(L"Regel \"" + r.pattern + L"\" ist zu breit, übersprungen"); continue; }
+        if (onlyWildcards) { warnings.push_back(Tr(L"Regel \"") + r.pattern + Tr(L"\" ist zu breit, übersprungen")); continue; }
         if (r.mode == RouteMode::Adapter) {
             std::wstring norm;
-            if (!ParseGuid(r.adapterGuid, norm)) { warnings.push_back(L"Regel \"" + r.pattern + L"\" ohne gültige GUID, übersprungen"); continue; }
+            if (!ParseGuid(r.adapterGuid, norm)) { warnings.push_back(Tr(L"Regel \"") + r.pattern + Tr(L"\" ohne gültige GUID, übersprungen")); continue; }
             r.adapterGuid = norm;
         }
         if (r.id == 0) r.id = NextRuleId(out);
@@ -466,7 +467,7 @@ bool EnsureDir(const std::wstring& dir, std::wstring& err) {
     }
     if (!CreateDirectoryW(dir.c_str(), nullptr)) {
         DWORD e = GetLastError();
-        if (e != ERROR_ALREADY_EXISTS) { err = L"Ordner " + dir + L": " + LastErrText(e); return false; }
+        if (e != ERROR_ALREADY_EXISTS) { err = Tr(L"Ordner ") + dir + L": " + LastErrText(e); return false; }
     }
     return true;
 }
@@ -489,7 +490,7 @@ bool ReadTextFile(const std::wstring& file, std::wstring& out, std::wstring& err
         if (!ReadFile(h, buf, sizeof(buf), &got, nullptr)) { err = LastErrText(GetLastError()); ok = false; break; }
         if (got == 0) break;
         bytes.append(buf, got);
-        if (bytes.size() > 32u * 1024u * 1024u) { err = L"Datei zu groß"; ok = false; break; }
+        if (bytes.size() > 32u * 1024u * 1024u) { err = Tr(L"Datei zu groß"); ok = false; break; }
     }
     CloseHandle(h);
     if (!ok) return false;
@@ -512,21 +513,21 @@ bool WriteTextFileAtomic(const std::wstring& file, const std::wstring& content, 
 
     std::string bytes = "\xEF\xBB\xBF" + U8FromW(content);   // BOM: für Werkzeuge/Notfall lesbar
     HANDLE h = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) { err = L"Temporäre Datei " + tmp + L": " + LastErrText(GetLastError()); return false; }
+    if (h == INVALID_HANDLE_VALUE) { err = Tr(L"Temporäre Datei ") + tmp + L": " + LastErrText(GetLastError()); return false; }
     bool ok = true;
     size_t off = 0;
     while (off < bytes.size()) {
         DWORD want = static_cast<DWORD>(std::min<size_t>(bytes.size() - off, 65536));
         DWORD done = 0;
         if (!WriteFile(h, bytes.data() + off, want, &done, nullptr) || done != want) {
-            err = L"Schreiben " + tmp + L": " + LastErrText(GetLastError());
+            err = Tr(L"Schreiben ") + tmp + L": " + LastErrText(GetLastError());
             ok = false;
             break;
         }
         off += done;
     }
     if (ok) {
-        if (!FlushFileBuffers(h)) { err = L"Flush: " + LastErrText(GetLastError()); ok = false; }
+        if (!FlushFileBuffers(h)) { err = Tr(L"Flush: ") + LastErrText(GetLastError()); ok = false; }
     }
     CloseHandle(h);
     if (!ok) { DeleteFileW(tmp.c_str()); return false; }
@@ -545,7 +546,7 @@ bool WriteTextFileAtomic(const std::wstring& file, const std::wstring& content, 
     for (int attempt = 0; attempt < 6; ++attempt) {
         if (MoveFileExW(tmp.c_str(), file.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return true;
         DWORD e = GetLastError();
-        err = L"Verschieben nach " + file + L": " + LastErrText(e);
+        err = Tr(L"Verschieben nach ") + file + L": " + LastErrText(e);
         if (e != ERROR_SHARING_VIOLATION && e != ERROR_ACCESS_DENIED) break;
         Sleep(25);
     }
@@ -605,7 +606,7 @@ bool LoadRuleset(const Paths& p, Ruleset& out, std::vector<std::wstring>& warnin
         std::wstring werr;
         WriteTextFileAtomic(broken, text, werr);
         warnings.push_back(L"rules.json war beschädigt (Zeile " + std::to_wstring(pr.line) + L"): " + pr.error);
-        warnings.push_back(L"Kaputte Version gesichert als " + broken);
+        warnings.push_back(Tr(L"Kaputte Version gesichert als ") + broken);
         if (FileExists(p.rulesFile + L".bak")) {
             std::wstring bakText, bakErr;
             if (ReadTextFile(p.rulesFile + L".bak", bakText, bakErr)) {
@@ -672,19 +673,19 @@ static std::wstring GuidForMode(const std::vector<AdapterInfo>& adapters,
     switch (res.mode) {
     case RouteMode::Wlan: {
         const AdapterInfo* a = FindAdapterByRole(adapters, AdapterKind::Wlan);
-        if (!a) { if (problem) *problem = L"Kein WLAN-Adapter gefunden für " + what; return L""; }
+        if (!a) { if (problem) *problem = Tr(L"Kein WLAN-Adapter gefunden für ") + what; return L""; }
         return ToLowerW(a->guid);          // im resolved.json immer kleingeschrieben
     }
     case RouteMode::Lan: {
         const AdapterInfo* a = FindAdapterByRole(adapters, AdapterKind::Lan);
-        if (!a) { if (problem) *problem = L"Kein Ethernet-Adapter gefunden für " + what; return L""; }
+        if (!a) { if (problem) *problem = Tr(L"Kein Ethernet-Adapter gefunden für ") + what; return L""; }
         return ToLowerW(a->guid);
     }
     case RouteMode::Adapter: {
         std::wstring norm;
-        if (!ParseGuid(res.adapterGuid, norm)) { if (problem) *problem = L"Ungültige GUID für " + what; return L""; }
+        if (!ParseGuid(res.adapterGuid, norm)) { if (problem) *problem = Tr(L"Ungültige GUID für ") + what; return L""; }
         const AdapterInfo* a = FindAdapterByGuid(adapters, norm);
-        if (!a) { if (problem) *problem = L"Adapter " + FormatGuidShort(norm) + L" nicht vorhanden für " + what; return L""; }
+        if (!a) { if (problem) *problem = Tr(L"Adapter ") + FormatGuidShort(norm) + Tr(L" nicht vorhanden für ") + what; return L""; }
         return norm;
     }
     default: return L"";
@@ -720,10 +721,10 @@ JsonPtr BuildResolvedJson(const Ruleset& rs, const std::vector<AdapterInfo>& ada
         Resolved res;
         res.mode = r.mode;
         res.adapterGuid = r.adapterGuid;
-        std::wstring guid = GuidForMode(adapters, res, nullptr, L"Regel \"" + r.pattern + L"\"");
+        std::wstring guid = GuidForMode(adapters, res, nullptr, Tr(L"Regel \"") + r.pattern + L"\"");
         if (res.mode != RouteMode::None && guid.empty()) {
             std::wstring problem;
-            GuidForMode(adapters, res, &problem, L"Regel \"" + r.pattern + L"\"");
+            GuidForMode(adapters, res, &problem, Tr(L"Regel \"") + r.pattern + L"\"");
             if (!problem.empty()) problems.push_back(problem);
         }
         std::wstring key = ToLowerW(r.pattern) + L"|";
@@ -843,7 +844,7 @@ bool EnumerateAdapters(std::vector<AdapterInfo>& out, std::wstring& err) {
     DWORD r = GetIfTable2(&raw);
     std::unique_ptr<MIB_IF_TABLE2, IfTableDeleter> ift(raw);
     if (r != NO_ERROR) {
-        err = L"GetIfTable2: " + LastErrText(r);
+        err = Tr(L"GetIfTable2: ") + LastErrText(r);
         if (r != ERROR_ACCESS_DENIED) return false;   // ohne Rechte reicht GetAdaptersAddresses
     }
 
@@ -877,11 +878,11 @@ bool EnumerateAdapters(std::vector<AdapterInfo>& out, std::wstring& err) {
     ULONG flags = GAA_FLAG_INCLUDE_GATEWAYS | GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
     ULONG size = 0;
     DWORD rr = GetAdaptersAddresses(AF_UNSPEC, flags, nullptr, nullptr, &size);
-    if (rr != ERROR_BUFFER_OVERFLOW && rr != NO_ERROR) { err = L"GetAdaptersAddresses: " + LastErrText(rr); return false; }
+    if (rr != ERROR_BUFFER_OVERFLOW && rr != NO_ERROR) { err = Tr(L"GetAdaptersAddresses: ") + LastErrText(rr); return false; }
     std::vector<char> buf(size ? size : 1);
     IP_ADAPTER_ADDRESSES* aa = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buf.data());
     rr = GetAdaptersAddresses(AF_UNSPEC, flags, nullptr, aa, &size);
-    if (rr != NO_ERROR) { err = L"GetAdaptersAddresses: " + LastErrText(rr); return false; }
+    if (rr != NO_ERROR) { err = Tr(L"GetAdaptersAddresses: ") + LastErrText(rr); return false; }
 
     for (IP_ADAPTER_ADDRESSES* p = aa; p; p = p->Next) {
         if (p->IfType == IF_TYPE_SOFTWARE_LOOPBACK) continue;
@@ -1053,10 +1054,10 @@ bool EnumerateTcpConnections(std::vector<TcpConn>& out, std::wstring& err) {
     for (ADDRESS_FAMILY fam : fams) {
         ULONG size = 0;
         DWORD r = GetExtendedTcpTable(nullptr, &size, FALSE, fam, TCP_TABLE_OWNER_PID_ALL, 0);
-        if (r != ERROR_INSUFFICIENT_BUFFER && r != NO_ERROR) { err = L"GetExtendedTcpTable: " + LastErrText(r); continue; }
+        if (r != ERROR_INSUFFICIENT_BUFFER && r != NO_ERROR) { err = Tr(L"GetExtendedTcpTable: ") + LastErrText(r); continue; }
         std::vector<char> buf(size ? size : 4);
         r = GetExtendedTcpTable(buf.data(), &size, FALSE, fam, TCP_TABLE_OWNER_PID_ALL, 0);
-        if (r != NO_ERROR) { err = L"GetExtendedTcpTable: " + LastErrText(r); continue; }
+        if (r != NO_ERROR) { err = Tr(L"GetExtendedTcpTable: ") + LastErrText(r); continue; }
         if (fam == AF_INET) {
             PMIB_TCPTABLE_OWNER_PID v4 = reinterpret_cast<PMIB_TCPTABLE_OWNER_PID>(buf.data());
             for (DWORD i = 0; i < v4->dwNumEntries; ++i) {
@@ -1261,17 +1262,17 @@ bool IsModuleLoadedInProcess(unsigned long pid, const std::wstring& moduleBaseLo
 }
 
 bool InjectDll(unsigned long pid, const std::wstring& dllPath, std::wstring& err) {
-    if (!FileExists(dllPath)) { err = L"Hook-Bibliothek fehlt: " + dllPath; return false; }
+    if (!FileExists(dllPath)) { err = Tr(L"Hook-Bibliothek fehlt: ") + dllPath; return false; }
 
     bool is32 = false;
     std::wstring e2;
-    if (IsWow64ProcessById(pid, is32, e2) && is32) { err = L"32-Bit-Prozess: nur 64-Bit-Anbindung möglich"; return false; }
+    if (IsWow64ProcessById(pid, is32, e2) && is32) { err = Tr(L"32-Bit-Prozess: nur 64-Bit-Anbindung möglich"); return false; }
 
     HANDLE h = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION |
                            PROCESS_VM_WRITE | PROCESS_VM_READ, FALSE, pid);
     if (!h) {
         DWORD e = GetLastError();
-        err = (e == ERROR_ACCESS_DENIED) ? L"Zugriff verweigert (Prozess läuft höher privilegiert oder ist geschützt)"
+        err = (e == ERROR_ACCESS_DENIED) ? Tr(L"Zugriff verweigert (Prozess läuft höher privilegiert oder ist geschützt)")
                                          : LastErrText(e);
         return false;
     }
@@ -1280,27 +1281,27 @@ bool InjectDll(unsigned long pid, const std::wstring& dllPath, std::wstring& err
     SIZE_T bytes = chars * sizeof(wchar_t);
     void* remote = VirtualAllocEx(h, nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!remote) {
-        err = L"VirtualAllocEx: " + LastErrText(GetLastError());
+        err = Tr(L"VirtualAllocEx: ") + LastErrText(GetLastError());
     } else if (!WriteProcessMemory(h, remote, dllPath.c_str(), bytes, nullptr)) {
-        err = L"WriteProcessMemory: " + LastErrText(GetLastError());
+        err = Tr(L"WriteProcessMemory: ") + LastErrText(GetLastError());
     } else {
         HMODULE user32 = GetModuleHandleW(L"kernel32.dll");
         FARPROC fn = GetProcAddress(user32, "LoadLibraryW");
         if (!fn) {
-            err = L"LoadLibraryW nicht gefunden";
+            err = Tr(L"LoadLibraryW nicht gefunden");
         } else {
             HANDLE th = CreateRemoteThread(h, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(fn), remote, 0, nullptr);
             if (!th) {
-                err = L"CreateRemoteThread: " + LastErrText(GetLastError());
+                err = Tr(L"CreateRemoteThread: ") + LastErrText(GetLastError());
             } else {
                 DWORD wait = WaitForSingleObject(th, 10000);
                 DWORD exitCode = 0;
                 GetExitCodeThread(th, &exitCode);
                 CloseHandle(th);
                 if (wait != WAIT_OBJECT_0) {
-                    err = L"Injektion braucht zu lange (Timeout)";
+                    err = Tr(L"Injektion braucht zu lange (Timeout)");
                 } else if (exitCode == 0) {
-                    err = L"LoadLibrary schlug im Zielprozess fehl (Virenschutz? geschützter Prozess?)";
+                    err = Tr(L"LoadLibrary schlug im Zielprozess fehl (Virenschutz? geschützter Prozess?)");
                 } else {
                     ok = true;
                 }
@@ -1323,7 +1324,7 @@ static bool RemoteModuleBase(unsigned long pid, const std::wstring& modulePath,
     baseOut = 0;
     std::wstring want = LowerBaseName(modulePath);
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
-    if (snap == INVALID_HANDLE_VALUE) { err = L"Modulauflistung: " + LastErrText(GetLastError()); return false; }
+    if (snap == INVALID_HANDLE_VALUE) { err = Tr(L"Modulauflistung: ") + LastErrText(GetLastError()); return false; }
     bool found = false;
     MODULEENTRY32W me = {};
     me.dwSize = sizeof(me);
@@ -1337,7 +1338,7 @@ static bool RemoteModuleBase(unsigned long pid, const std::wstring& modulePath,
         } while (Module32NextW(snap, &me));
     }
     CloseHandle(snap);
-    if (!found) { err = L"Modul nicht im Prozess gefunden: " + want; return false; }
+    if (!found) { err = Tr(L"Modul nicht im Prozess gefunden: ") + want; return false; }
     return true;
 }
 
@@ -1347,7 +1348,7 @@ static bool RemoteModuleBase(unsigned long pid, const std::wstring& modulePath,
 static bool CallRemoteHookProc(unsigned long pid, const std::wstring& dllPath, const char* procName,
                                unsigned long& resultOut, std::wstring& err) {
     resultOut = 0;
-    if (!FileExists(dllPath)) { err = L"Hook-Bibliothek fehlt: " + dllPath; return false; }
+    if (!FileExists(dllPath)) { err = Tr(L"Hook-Bibliothek fehlt: ") + dllPath; return false; }
 
     unsigned long long remoteBase = 0;
     if (!RemoteModuleBase(pid, dllPath, remoteBase, err)) return false;
@@ -1355,10 +1356,10 @@ static bool CallRemoteHookProc(unsigned long pid, const std::wstring& dllPath, c
     static HMODULE local = nullptr;
     if (!local) {
         local = LoadLibraryW(dllPath.c_str());
-        if (!local) { err = L"Lokales Laden der Hook-Bibliothek: " + LastErrText(GetLastError()); return false; }
+        if (!local) { err = Tr(L"Lokales Laden der Hook-Bibliothek: ") + LastErrText(GetLastError()); return false; }
     }
     FARPROC fn = GetProcAddress(local, procName);
-    if (!fn) { err = std::wstring(L"Export ") + WFromAscii(procName) + L" fehlt in hook.dll"; return false; }
+    if (!fn) { err = std::wstring(Tr(L"Export ")) + WFromAscii(procName) + L" fehlt in hook.dll"; return false; }
     unsigned long long rva = static_cast<unsigned long long>(
         reinterpret_cast<uintptr_t>(fn) - reinterpret_cast<uintptr_t>(local));
 
@@ -1371,13 +1372,13 @@ static bool CallRemoteHookProc(unsigned long pid, const std::wstring& dllPath, c
                                        reinterpret_cast<unsigned char*>(static_cast<uintptr_t>(remoteBase)) + rva),
                                    nullptr, 0, nullptr);
     if (!th) {
-        err = L"CreateRemoteThread: " + LastErrText(GetLastError());
+        err = Tr(L"CreateRemoteThread: ") + LastErrText(GetLastError());
     } else {
         DWORD wait = WaitForSingleObject(th, 8000);
         DWORD code = 0;
         GetExitCodeThread(th, &code);
         CloseHandle(th);
-        if (wait != WAIT_OBJECT_0) err = L"Remote-Aufruf braucht zu lange (Timeout)";
+        if (wait != WAIT_OBJECT_0) err = Tr(L"Remote-Aufruf braucht zu lange (Timeout)");
         else { resultOut = static_cast<unsigned long>(code); ok = true; }
     }
     CloseHandle(h);
@@ -1388,7 +1389,7 @@ static bool CallRemoteHookProc(unsigned long pid, const std::wstring& dllPath, c
 bool ActivateHookInProcess(unsigned long pid, const std::wstring& dllPath, std::wstring& err) {
     unsigned long r = 0;
     if (!CallRemoteHookProc(pid, dllPath, "SrtStartup", r, err)) return false;
-    if (r != 1) { err = L"Hook-Aktivierung meldete Rückgabe " + std::to_wstring(r); return false; }
+    if (r != 1) { err = Tr(L"Hook-Aktivierung meldete Rückgabe ") + std::to_wstring(r); return false; }
     return true;
 }
 
@@ -1420,10 +1421,10 @@ bool CanInjectProcess(const ProcInfo& p, bool elevated, bool hookExists, std::ws
                         : L"hook.dll fehlt im Datenordner";
         return false;
     }
-    if (!elevated) { why = L"RoutePerApp läuft ohne Administratorrechte"; return false; }
-    if (p.pid <= 4) { why = L"Systemprozess wird nicht angefasst"; return false; }
+    if (!elevated) { why = Tr(L"RoutePerApp läuft ohne Administratorrechte"); return false; }
+    if (p.pid <= 4) { why = Tr(L"Systemprozess wird nicht angefasst"); return false; }
     if (ToLowerW(p.image) == L"routeperapp.exe") { why = L"RoutePerApp bindet sich nicht selbst ein"; return false; }
-    if (!p.pathAccess) { why = L"Prozessinformationen nicht lesbar (höhere Priorität)"; return false; }
+    if (!p.pathAccess) { why = Tr(L"Prozessinformationen nicht lesbar (höhere Priorität)"); return false; }
     return true;
 }
 
@@ -1446,7 +1447,7 @@ bool IsProcessElevatedSelf(bool& elevated, std::wstring& err) {
 bool RelaunchElevated(std::wstring& err) {
     wchar_t path[MAX_PATH * 4];
     DWORD n = GetModuleFileNameW(nullptr, path, MAX_PATH * 4);
-    if (!n || n >= MAX_PATH * 4 - 1) { err = L"Pfad der eigenen Datei nicht bestimmbar"; return false; }
+    if (!n || n >= MAX_PATH * 4 - 1) { err = Tr(L"Pfad der eigenen Datei nicht bestimmbar"); return false; }
     HINSTANCE r = ShellExecuteW(nullptr, L"runas", path, nullptr, nullptr, SW_SHOWNORMAL);
     if (reinterpret_cast<INT_PTR>(r) <= 32) { err = LastErrText(static_cast<DWORD>(reinterpret_cast<INT_PTR>(r))); return false; }
     return true;
@@ -1544,7 +1545,7 @@ bool Engine::ReloadIfChanged(std::wstring& err) {
 
 bool Engine::Assign(const std::wstring& image, const std::wstring& path, RouteMode mode,
                     const std::wstring& adapterGuid, std::wstring& err) {
-    if (TrimW(image).empty()) { err = L"Prozessname fehlt"; return false; }
+    if (TrimW(image).empty()) { err = Tr(L"Prozessname fehlt"); return false; }
     // Bestehende Regel für denselben Prozess überschreiben: eine Zuordnung pro Prozess.
     const std::wstring imgLower = ToLowerW(TrimW(image));
     for (size_t i = 0; i < rules.rules.size(); ++i) {
@@ -1564,7 +1565,7 @@ bool Engine::Assign(const std::wstring& image, const std::wstring& path, RouteMo
     r.pattern = imgLower;
     r.mode = mode;
     r.adapterGuid = (mode == RouteMode::Adapter) ? adapterGuid : L"";
-    r.note = L"per Drag & Drop zugeordnet";
+    r.note = Tr(L"per Drag & Drop zugeordnet");
     if (!path.empty()) {
         // Bei gleichem Bildnamen an anderem Ort: Pfad präzisieren
         bool otherPathExists = false;
@@ -1579,7 +1580,7 @@ bool Engine::Assign(const std::wstring& image, const std::wstring& path, RouteMo
 }
 
 bool Engine::ClearAssignment(unsigned long long ruleId, std::wstring& err) {
-    if (!rules.Remove(ruleId)) { err = L"Regel nicht gefunden"; return false; }
+    if (!rules.Remove(ruleId)) { err = Tr(L"Regel nicht gefunden"); return false; }
     return SaveAndPublish(err);
 }
 
@@ -1593,7 +1594,7 @@ int Engine::ReinjectMatching(std::wstring& err, int& alreadyOut, int& failedOut)
     alreadyOut = 0;
     failedOut = 0;
     int done = 0;
-    if (!elevated) { err = L"ohne Administratorrechte keine Anbindung möglich"; return 0; }
+    if (!elevated) { err = Tr(L"ohne Administratorrechte keine Anbindung möglich"); return 0; }
     const bool hook64 = FileExists(paths.hookDll);
     const bool hook32 = FileExists(paths.hookDll32);
     std::wstring firstError;

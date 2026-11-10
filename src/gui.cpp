@@ -32,7 +32,8 @@ enum {
     IDM_HIDE = 2012, IDM_ABOUT = 2013, IDM_KEYS = 2014,
     IDM_TRAY_OPEN = 2015, IDM_REINJECT = 2016,
     IDM_AUTOSTART = 2017, IDM_DEF_STANDARD = 2018, IDM_DEF_WLAN = 2019,
-    IDM_DEF_LAN = 2020, IDM_HOTKEYS = 2021
+    IDM_DEF_LAN = 2020, IDM_HOTKEYS = 2021,
+    IDM_LANG_DE = 2022, IDM_LANG_EN = 2023
 };
 // Nummern der globalen Tastenkürzel (Strg+Alt+...)
 enum { HK_WLAN = 1, HK_LAN = 2, HK_STANDARD = 3, HK_RAISE = 4 };
@@ -167,7 +168,7 @@ static void PaintCard(HWND hwnd, HDC target) {
         RECT hint = { x, h - S(22), w - S(12), h - S(6) };
         old = static_cast<HFONT>(SelectObject(mem, app->fontSmall));
         SetTextColor(mem, theme::borderHot);
-        std::wstring txt = L"hier ablegen \x2013 " + std::wstring(ZoneName(st->zone));
+        std::wstring txt = Tr(L"hier ablegen \x2013 ") + std::wstring(ZoneName(st->zone));
         DrawTextW(mem, txt.c_str(), -1, &hint, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
         SelectObject(mem, old);
     }
@@ -203,7 +204,7 @@ static LRESULT CALLBACK CardProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (app && st) {
             std::vector<unsigned long> sel = app->SelectedPids();
             if (sel.empty()) {
-                app->SetNote(L"Zuerst ein Programm in der Liste markieren - oder direkt auf diese Karte ziehen.", 8);
+                app->SetNote(Tr(L"Zuerst ein Programm in der Liste markieren - oder direkt auf diese Karte ziehen."), 8);
             } else {
                 app->ApplyToRows(sel, st->zone);
             }
@@ -258,7 +259,7 @@ static LRESULT CALLBACK SearchProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UI
         }
         if (wp == VK_RETURN) {
             app->RefreshAll(true);
-            app->SetNote(L"Neu geladen.", 4);
+            app->SetNote(Tr(L"Neu geladen."), 4);
             return 0;
         }
     }
@@ -464,20 +465,20 @@ bool App::Create(HINSTANCE hinst) {
                              WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
                              0, 0, S(240), S(26), hwnd,
                              reinterpret_cast<HMENU>(ids::IDC_SEARCH), hinst, nullptr);
-    SendMessageW(search, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(L"Programm oder Benutzer suchen"));
+    SendMessageW(search, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(Tr(L"Programm oder Benutzer suchen")));
     SetWindowSubclass(search, SearchProc, 2, reinterpret_cast<DWORD_PTR>(this));
 
-    chkNet = CreateWindowExW(0, L"BUTTON", L"nur mit Verbindung",
+    chkNet = CreateWindowExW(0, L"BUTTON", Tr(L"nur mit Verbindung"),
                              WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
                              0, 0, S(170), S(24), hwnd,
                              reinterpret_cast<HMENU>(ids::IDC_CHK_NET), hinst, nullptr);
 
-    btnReload = CreateWindowExW(0, L"BUTTON", L"Neu laden (F5)",
+    btnReload = CreateWindowExW(0, L"BUTTON", Tr(L"Neu laden (F5)"),
                                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
                                 0, 0, S(150), S(28), hwnd,
                                 reinterpret_cast<HMENU>(ids::IDC_BTN_RELOAD), hinst, nullptr);
 
-    btnAdmin = CreateWindowExW(0, L"BUTTON", L"Als Administrator neu starten",
+    btnAdmin = CreateWindowExW(0, L"BUTTON", Tr(L"Als Administrator neu starten"),
                                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
                                0, 0, S(240), S(28), hwnd,
                                reinterpret_cast<HMENU>(ids::IDC_BTN_ADMIN), hinst, nullptr);
@@ -508,7 +509,8 @@ bool App::Create(HINSTANCE hinst) {
     LVCOLUMNW col = {};
     col.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT;
     col.fmt = LVCFMT_LEFT;
-    const wchar_t* names[COL_COUNT] = { L"Programm", L"PID", L"Adapter heute", L"WLAN", L"LAN", L"Standard", L"Benutzer" };
+    const wchar_t* names[COL_COUNT] = { Tr(L"Programm"), L"PID", Tr(L"Adapter heute"),
+                                        Tr(L"WLAN"), Tr(L"LAN"), Tr(L"Standard"), Tr(L"Benutzer") };
     const int widths[COL_COUNT] = { S(300), S(70), S(160), S(120), S(120), S(120), S(150) };
     for (int c = 0; c < COL_COUNT; ++c) {
         col.iSubItem = c;
@@ -530,6 +532,7 @@ bool App::Create(HINSTANCE hinst) {
     InvalidateRect(hwnd, nullptr, TRUE);
 
     LoadSettings();
+    if (lang::Language() != language) SwitchLanguage(language);
     RefreshAutostartState();
     RegisterHotkeys();
     ShowTray();
@@ -539,7 +542,7 @@ bool App::Create(HINSTANCE hinst) {
 
     if (!startupError.empty()) SetNote(startupError, 20);
     else if (!engine.problems.empty()) SetNote(engine.problems[0], 15);
-    else SetNote(L"Programm in der Liste greifen und auf WLAN, LAN oder Standard ziehen.", 12);
+    else SetNote(Tr(L"Programm in der Liste greifen und auf WLAN, LAN oder Standard ziehen."), 12);
     return true;
 }
 
@@ -616,14 +619,12 @@ void App::EnsureHookCopies() {
         const DWORD code = GetLastError();
         // Eine geladene Bibliothek ist gesperrt: dann hilft nur Beenden und Neustart.
         std::wstring why = (code == ERROR_SHARING_VIOLATION || code == ERROR_ACCESS_DENIED)
-            ? L" - die alte Bibliothek wird noch von gebundenen Programmen benutzt,"
-              L" RoutePerApp beenden und diese Programme neu starten"
+            ? Tr(L" - die alte Bibliothek wird noch von gebundenen Programmen benutzt, RoutePerApp beenden und diese Programme neu starten")
             : LastErrText(code);
-        engine.problems.push_back(std::wstring(names[i]) + L" konnte nicht erneuert werden: " + why);
+        engine.problems.push_back(std::wstring(names[i]) + Tr(L" konnte nicht erneuert werden: ") + why);
     }
     if (!FileExists(engine.paths.hookDll) || !FileExists(engine.paths.hookDll32)) {
-        engine.problems.push_back(L"Hook-Bibliothek fehlt: Zuordnungen werden gespeichert, aber laufende Programme erst beim n\xE4"
-                                  L"chsten Start angebunden");
+        engine.problems.push_back(Tr(L"Hook-Bibliothek fehlt: Zuordnungen werden gespeichert, aber laufende Programme erst beim n\u00E4chsten Start angebunden"));
     }
     engine.Publish();
 }
@@ -717,8 +718,7 @@ void App::PaintBackground(HDC dc, const RECT& client) const {
     RECT sub = { S(23), S(38), client.right - S(20), BandTop() };
     old = static_cast<HFONT>(SelectObject(dc, fontSmall));
     SetTextColor(dc, theme::muted);
-    std::wstring hint = L"Programm aus der Liste auf WLAN, LAN oder Standard ziehen - neue Verbindungen laufen ab sofort dar\xFC"
-                        L"ber";
+    std::wstring hint = Tr(L"Programm aus der Liste auf WLAN, LAN oder Standard ziehen - neue Verbindungen laufen ab sofort dar\u00FCber");
     DrawTextW(dc, hint.c_str(), -1, &sub, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
     SelectObject(dc, old);
 }
@@ -746,7 +746,7 @@ void App::PaintStatus(HDC dc, const RECT& client) const {
     // Rechts: Tastenkürzel, damit die Liste nicht verrutscht
     HFONT old = static_cast<HFONT>(SelectObject(dc, fontSmall));
     SetTextColor(dc, theme::muted);
-    const std::wstring keys = L"Strg+Z  r\xFC" L"ckg\xE4" L"ngig   \x2022   F5  neu laden   \x2022   Doppelklick  Details";
+    const std::wstring keys = Tr(L"Strg+Z  r\u00FCckg\u00E4ngig   \u2022   F5  neu laden   \u2022   Doppelklick  Details");
     SIZE ks = {};
     GetTextExtentPoint32W(dc, keys.c_str(), static_cast<int>(keys.size()), &ks);
     RECT right = { band.right - ks.cx - S(18), band.top + S(4), band.right - S(14), band.bottom - S(4) };
@@ -831,7 +831,7 @@ void App::RebuildView() {
         }
     }
     if (view.empty() && !query.empty()) {
-        SetNote(L"Kein Programm passt zu \xBB" + query + L"\xBB  -  Esc im Suchfeld l\xF6" L"scht die Suche.", 6);
+        SetNote(Tr(L"Kein Programm passt zu \xBB") + query + Tr(L"\u00BB  -  Esc im Suchfeld l\u00F6scht die Suche."), 6);
     }
 }
 
@@ -963,7 +963,7 @@ void App::UpdateCards() {
             ? BuildStandardCard(explicitDefault, engine.rows.size() - explicitDefault)
             : BuildCard(ad, zones[i - 1]);
         if (dragging && hoverZone == zones[i - 1]) {
-            t.lines.push_back(L"Ziel f\xFC" L"r den aktuellen Zug");
+            t.lines.push_back(Tr(L"Ziel f\u00FCr den aktuellen Zug"));
         }
         cardState[i].text = t;
         if (cardState[i].hwnd) InvalidateRect(cardState[i].hwnd, nullptr, FALSE);
@@ -1037,9 +1037,9 @@ void App::OnListNotify(LPNMHDR nmh, LRESULT& res) {
         const ProcRow& r = view[idx];
         std::wstring text = RowStateText(r);
         if (!r.path.empty()) text += L"\n" + r.path;
-        else if (!r.pathAccess) text += L"\nPfad nicht lesbar - Zuordnung nur \xFC" L"ber den Bildnamen m\xF6" L"glich";
-        if (r.is32Bit) text += L"\n32-Bit-Programm";
-        if (r.mode != RouteMode::None) text += L"\nZiel: " + ModeLabel(r.mode);
+        else if (!r.pathAccess) text += Tr(L"\nPfad nicht lesbar - Zuordnung nur \u00FCber den Bildnamen m\u00F6glich");
+        if (r.is32Bit) text += Tr(L"\n32-Bit-Programm");
+        if (r.mode != RouteMode::None) text += Tr(L"\nZiel: ") + ModeLabel(r.mode);
         lstrcpynW(tip->pszText, text.c_str(), tip->cchTextMax);
         break;
     }
@@ -1075,11 +1075,17 @@ void App::OnCommand(int id, int code) {
     case ids::IDC_BTN_RELOAD:
     case ids::IDM_RELOAD:
         RefreshAll(true);
-        SetNote(L"Neu geladen.", 4);
+        SetNote(Tr(L"Neu geladen."), 4);
         break;
     case ids::IDC_BTN_ADMIN:
     case ids::IDM_RESTART_ADMIN:
         RestartElevated();
+        break;
+    case ids::IDM_LANG_DE:
+        SwitchLanguage(L"de");
+        break;
+    case ids::IDM_LANG_EN:
+        SwitchLanguage(L"en");
         break;
     case ids::IDM_UNDO:
         UndoLast();
@@ -1106,9 +1112,9 @@ void App::OnCommand(int id, int code) {
         const ProcRow* r = sel.empty() ? nullptr : RowForPid(sel[0]);
         if (r && !r->path.empty()) {
             CopyToClipboard(hwnd, r->path);
-            SetNote(L"Pfad kopiert: " + r->path, 5);
+            SetNote(Tr(L"Pfad kopiert: ") + r->path, 5);
         } else {
-            SetNote(L"Kein Programmpfad bekannt - Pfad kopieren geht nur bei lesbaren Programmen.", 6);
+            SetNote(Tr(L"Kein Programmpfad bekannt - Pfad kopieren geht nur bei lesbaren Programmen."), 6);
         }
         break;
     }
@@ -1140,9 +1146,9 @@ void App::OnCommand(int id, int code) {
         int already = 0, failed = 0;
         std::wstring ierr;
         const int applied = engine.ReinjectMatching(ierr, already, failed);
-        std::wstring msg = L"Neu gebunden: " + std::to_wstring(applied) + L", bereits gebunden: " + std::to_wstring(already);
-        if (failed) msg += L", fehlgeschlagen: " + std::to_wstring(failed);
-        if (!ierr.empty()) msg += L"  \x2013  " + ierr;
+        std::wstring msg = Tr(L"Neu gebunden: ") + std::to_wstring(applied) + Tr(L", bereits gebunden: ") + std::to_wstring(already);
+        if (failed) msg += Tr(L", fehlgeschlagen: ") + std::to_wstring(failed);
+        if (!ierr.empty()) msg += Tr(L"  \x2013  ") + ierr;
         SetNote(msg, 10);
         RefreshAll(true);
         break;
@@ -1241,7 +1247,7 @@ void App::BeginDragFromList() {
 
     FinishDragFeedback();
     if (FAILED(hr) || effect == DROPEFFECT_NONE) {
-        SetNote(L"Zug abgebrochen - nichts ge\xE4" L"ndert.", 5);
+        SetNote(Tr(L"Zug abgebrochen - nichts ge\u00E4ndert."), 5);
     }
 }
 
@@ -1282,9 +1288,9 @@ void App::FinishDragFeedback() {
 
 static std::wstring ZoneVerb(Zone zone) {
     switch (zone) {
-    case Zone::Wlan:     return L"\xFC" L"ber WLAN";
-    case Zone::Lan:      return L"\xFC" L"ber LAN";
-    case Zone::Standard: return L"Windows-Standard";
+    case Zone::Wlan:     return Tr(L"\u00FCber WLAN");
+    case Zone::Lan:      return Tr(L"\u00FCber LAN");
+    case Zone::Standard: return Tr(L"Windows-Standard");
     default:             return L"";
     }
 }
@@ -1300,7 +1306,7 @@ void App::ApplyToRows(const std::vector<unsigned long>& pids, Zone zone) {
         const ProcRow* r = RowForPid(pid);
         if (!r) continue;
         UndoStep step;
-        step.label = r->image + L" \x2192 " + ZoneVerb(zone);
+        step.label = r->image + Tr(L" \x2192 ") + ZoneVerb(zone);
         if (r->ruleId != 0) {
             const Rule* cur = engine.rules.Find(r->ruleId);
             if (cur) { step.previous = *cur; step.ruleId = cur->id; step.wasNew = false; }
@@ -1330,12 +1336,12 @@ void App::ApplyToRows(const std::vector<unsigned long>& pids, Zone zone) {
 
     std::wstring msg;
     if (changed == 0) {
-        msg = firstError.empty() ? L"Nichts ge\xE4" L"ndert." : firstError;
+        msg = firstError.empty() ? Tr(L"Nichts ge\u00E4ndert.") : firstError;
     } else {
         msg = std::to_wstring(changed);
-        msg += (changed == 1) ? L" Programm " : L" Programme ";
-        msg += ZoneVerb(zone) + L"  \x2013  " + InjectionSummary(applied, already, failed, ierr);
-        msg += L"  \x2013  bestehende Verbindungen bleiben bestehen, neue laufen ab sofort dar\xFC" L"ber";
+        msg += (changed == 1) ? Tr(L" Programm ") : Tr(L" Programme ");
+        msg += ZoneVerb(zone) + Tr(L"  \x2013  ") + InjectionSummary(applied, already, failed, ierr);
+        msg += Tr(L"  \u2013  bestehende Verbindungen bleiben bestehen, neue laufen ab sofort dar\u00FCber");
     }
     SetNote(msg, 14);
     RefreshAll(false);
@@ -1355,7 +1361,7 @@ void App::ApplyToFileDrop(const std::vector<std::wstring>& files, Zone zone) {
         }
         const std::wstring pat = PatternFromPath(f);
         UndoStep step;
-        step.label = pat + L" \x2192 " + ZoneVerb(zone);
+        step.label = pat + Tr(L" \x2192 ") + ZoneVerb(zone);
         if (!engine.Assign(pat, f, mode, L"", err)) {
             if (firstError.empty()) firstError = err;
             continue;
@@ -1376,13 +1382,13 @@ void App::ApplyToFileDrop(const std::vector<std::wstring>& files, Zone zone) {
 
     std::wstring msg;
     if (ok == 0) {
-        msg = !firstWhy.empty() ? firstWhy : (firstError.empty() ? L"Keine Zuordnung m\xF6" L"glich." : firstError);
+        msg = !firstWhy.empty() ? firstWhy : (firstError.empty() ? Tr(L"Keine Zuordnung m\u00F6glich.") : firstError);
     } else {
         msg = std::to_wstring(ok);
-        msg += (ok == 1) ? L" Programm geregelt " : L" Programme geregelt ";
-        msg += ZoneVerb(zone) + L"  \x2013  " + InjectionSummary(applied, already, failed, ierr);
-        if (rejected) msg += L"  \x2013  " + std::to_wstring(rejected) + L" abgelehnt: " + firstWhy;
-        msg += L"  \x2013  gilt ab dem n\xE4" L"chsten Start des Programms";
+        msg += (ok == 1) ? Tr(L" Programm geregelt ") : Tr(L" Programme geregelt ");
+        msg += ZoneVerb(zone) + Tr(L"  \x2013  ") + InjectionSummary(applied, already, failed, ierr);
+        if (rejected) msg += Tr(L"  \x2013  ") + std::to_wstring(rejected) + Tr(L" abgelehnt: ") + firstWhy;
+        msg += Tr(L"  \u2013  gilt ab dem n\u00E4chsten Start des Programms");
     }
     SetNote(msg, 16);
     RefreshAll(false);
@@ -1400,7 +1406,7 @@ void App::ClearAssignments(const std::vector<unsigned long>& pids) {
         step.ruleId = cur->id;
         step.previous = *cur;
         step.wasNew = false;
-        step.label = L"Zuordnung von " + r->image + L" entfernt";
+        step.label = Tr(L"Zuordnung von ") + r->image + Tr(L" entfernt");
         if (!engine.ClearAssignment(cur->id, err)) {
             if (firstError.empty()) firstError = err;
             continue;
@@ -1411,15 +1417,15 @@ void App::ClearAssignments(const std::vector<unsigned long>& pids) {
     int already = 0, failed = 0;
     std::wstring ierr;
     engine.ReinjectMatching(ierr, already, failed);
-    if (removed == 0) SetNote(firstError.empty() ? L"Keine Zuordnung vorhanden." : firstError, 6);
-    else SetNote(std::to_wstring(removed) + L" Zuordnung(en) entfernt  \x2013  Windows-Standard wieder aktiv", 10);
+    if (removed == 0) SetNote(firstError.empty() ? Tr(L"Keine Zuordnung vorhanden.") : firstError, 6);
+    else SetNote(std::to_wstring(removed) + Tr(L" Zuordnung(en) entfernt  \x2013  Windows-Standard wieder aktiv"), 10);
     RefreshAll(false);
 }
 
 void App::UndoLast() {
     UndoStep st;
     if (!undoStack.Pop(st)) {
-        SetNote(L"Nichts mehr r\xFC" L"ckg\xE4" L"ngig.", 5);
+        SetNote(Tr(L"Nichts mehr r\u00FCckg\u00E4ngig."), 5);
         return;
     }
     std::wstring err;
@@ -1429,7 +1435,7 @@ void App::UndoLast() {
     else ok = engine.rules.InsertTop(st.previous);
 
     if (!ok) {
-        SetNote(L"R\xFC" L"ckg\xE4" L"ngig fehlgeschlagen: Regel nicht mehr gefunden.", 8);
+        SetNote(Tr(L"R\u00FCckg\u00E4ngig fehlgeschlagen: Regel nicht mehr gefunden."), 8);
         RefreshAll(false);
         return;
     }
@@ -1438,14 +1444,14 @@ void App::UndoLast() {
     int already = 0, failed = 0;
     std::wstring ierr;
     const int applied = engine.ReinjectMatching(ierr, already, failed);
-    SetNote(L"R\xFC" L"ckg\xE4" L"ngig: " + st.label + L"  \x2013  " + InjectionSummary(applied, already, failed, ierr), 12);
+    SetNote(Tr(L"R\u00FCckg\u00E4ngig: ") + st.label + Tr(L"  \x2013  ") + InjectionSummary(applied, already, failed, ierr), 12);
     RefreshAll(false);
 }
 
 void App::RestartElevated() {
     std::wstring err;
     if (!RelaunchElevated(err)) {
-        SetNote(L"Neustart als Administrator fehlgeschlagen: " + err, 12);
+        SetNote(Tr(L"Neustart als Administrator fehlgeschlagen: ") + err, 12);
         return;
     }
     Destroy();
@@ -1468,7 +1474,7 @@ bool App::ShowTray() {
     tray.uCallbackMessage = ids::WM_APP_TRAY;
     tray.uVersion = NOTIFYICON_VERSION_4;      // Klick wird korrekt gemeldet, Menü erst beim Loslassen
     tray.hIcon = appIcon;
-    lstrcpynW(tray.szTip, L"RoutePerApp  \x2013  Internetweg pro Programm", static_cast<int>(sizeof(tray.szTip) / sizeof(wchar_t)));
+    lstrcpynW(tray.szTip, Tr(L"RoutePerApp  \x2013  Internetweg pro Programm"), static_cast<int>(sizeof(tray.szTip) / sizeof(wchar_t)));
     trayReady = Shell_NotifyIconW(NIM_ADD, &tray) != FALSE;
     if (trayReady) Shell_NotifyIconW(NIM_SETVERSION, &tray);
     return trayReady;
@@ -1498,25 +1504,28 @@ void App::ShowTrayMenu(POINT ptScreen) {
 HMENU App::MakeTrayMenu() {
     HMENU menu = CreatePopupMenu();
     if (!menu) return nullptr;
-    AppendMenuW(menu, MF_STRING, ids::IDM_TRAY_OPEN, L"RoutePerApp öffnen");
-    AppendMenuW(menu, MF_STRING, ids::IDM_RELOAD, L"Neu laden");
-    AppendMenuW(menu, MF_STRING, ids::IDM_REINJECT, L"Laufende Programme neu binden");
+    AppendMenuW(menu, MF_STRING, ids::IDM_TRAY_OPEN, Tr(L"RoutePerApp öffnen"));
+    AppendMenuW(menu, MF_STRING, ids::IDM_RELOAD, Tr(L"Neu laden"));
+    AppendMenuW(menu, MF_STRING, ids::IDM_REINJECT, Tr(L"Laufende Programme neu binden"));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     HMENU def = CreatePopupMenu();
     AppendMenuW(def, MF_STRING, ids::IDM_DEF_WLAN, L"WLAN");
     AppendMenuW(def, MF_STRING, ids::IDM_DEF_LAN, L"LAN");
-    AppendMenuW(def, MF_STRING, ids::IDM_DEF_STANDARD, L"Windows-Standard");
+    AppendMenuW(def, MF_STRING, ids::IDM_DEF_STANDARD, Tr(L"Windows-Standard"));
     CheckMenuItem(def, ids::IDM_DEF_WLAN, MF_BYCOMMAND |
                 (engine.rules.defaultMode == RouteMode::Wlan ? MF_CHECKED : MF_UNCHECKED));
     CheckMenuItem(def, ids::IDM_DEF_LAN, MF_BYCOMMAND |
                 (engine.rules.defaultMode == RouteMode::Lan ? MF_CHECKED : MF_UNCHECKED));
     CheckMenuItem(def, ids::IDM_DEF_STANDARD, MF_BYCOMMAND |
                 (engine.rules.defaultMode == RouteMode::None ? MF_CHECKED : MF_UNCHECKED));
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(def), L"Standardweg (ohne eigene Zuordnung)");
-    AppendMenuW(menu, MF_STRING, ids::IDM_AUTOSTART, L"Bei Windows-Anmeldung starten");
+    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(def), Tr(L"Standardweg (ohne eigene Zuordnung)"));
+    AppendMenuW(menu, MF_STRING, ids::IDM_AUTOSTART, Tr(L"Bei Windows-Anmeldung starten"));
     CheckMenuItem(menu, ids::IDM_AUTOSTART, MF_BYCOMMAND | (autostartOn ? MF_CHECKED : MF_UNCHECKED));
+    const bool de = (lang::Language() == L"de");
+    CheckMenuItem(menu, ids::IDM_LANG_DE, MF_BYCOMMAND | (de ? MF_CHECKED : MF_UNCHECKED));
+    CheckMenuItem(menu, ids::IDM_LANG_EN, MF_BYCOMMAND | (de ? MF_UNCHECKED : MF_CHECKED));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, ids::IDM_EXIT, L"Beenden  (Routing abschalten)");
+    AppendMenuW(menu, MF_STRING, ids::IDM_EXIT, Tr(L"Beenden  (Routing abschalten)"));
     return menu;
 }
 
@@ -1525,11 +1534,10 @@ void App::HideToTray() {
     ShowWindow(hwnd, SW_HIDE);
     inTray = true;
     if (!ShowTray()) {
-        SetNote(L"Das Symbol in der Taskleiste konnte nicht angelegt werden - Beenden geht über Datei \x2192 Beenden.", 20);
+        SetNote(Tr(L"Das Symbol in der Taskleiste konnte nicht angelegt werden - Beenden geht über Datei \x2192 Beenden."), 20);
         return;
     }
-    SetNote(L"Fenster ist geschlossen, aber RoutePerApp läuft weiter und hält die Zuordnungen. "
-            L"Beenden geht über das Symbol in der Taskleiste oder über Datei \x2192 Beenden.", 45);
+    SetNote(Tr(L"Fenster ist geschlossen, aber RoutePerApp läuft weiter und hält die Zuordnungen. Beenden geht über das Symbol in der Taskleiste oder über Datei \u2192 Beenden."), 45);
 }
 
 void App::RestoreFromTray() {
@@ -1555,13 +1563,13 @@ void App::Quit() {
 // anderen Programm Meldungen schickt, halten Virenwächter für Schadsoftware.
 int App::SelfTest() {
     int bad = 0;
-    std::wstring out = L"RoutePerApp " ;
+    std::wstring out = Tr(L"RoutePerApp ") ;
     out += kAppVersion;
-    out += L" Selbsttest\r\n\r\n";
+    out += Tr(L" Selbsttest\r\n\r\n");
 
     auto check = [&](const wchar_t* name, bool ok) {
         if (!ok) ++bad;
-        out += ok ? L"ok      " : L"FEHLER  ";
+        out += ok ? Tr(L"ok      ") : Tr(L"FEHLER  ");
         out += name;
         out += L"\r\n";
     };
@@ -1576,35 +1584,37 @@ int App::SelfTest() {
         return text.find(needle) != std::wstring::npos;
     };
 
-    check(L"Fenster steht und ist sichtbar", hwnd != nullptr && IsWindow(hwnd) && IsWindowVisible(hwnd));
+    check(Tr(L"Fenster steht und ist sichtbar"), hwnd != nullptr && IsWindow(hwnd) && IsWindowVisible(hwnd));
     HMENU bar = GetMenu(hwnd);
-    check(L"Menueleiste vorhanden", bar != nullptr);
+    check(Tr(L"Menueleiste vorhanden"), bar != nullptr);
     if (bar) {
-        check(L"Datei: Autostart-Punkt vorhanden", has(menuText(bar, 0, ids::IDM_AUTOSTART), L"Anmeldung"));
-        check(L"Weg: Standardweg-Punkte vorhanden",
+        check(Tr(L"Datei: Autostart-Punkt vorhanden"),
+              menuText(bar, 0, ids::IDM_AUTOSTART) == Tr(L"Bei Windows-Anmeldung starten"));
+        check(Tr(L"Weg: Standardweg-Punkte vorhanden"),
               !menuText(bar, 2, ids::IDM_DEF_STANDARD).empty() && !menuText(bar, 2, ids::IDM_DEF_WLAN).empty());
-        check(L"Programm: Tastenkuerzel-Punkt vorhanden", has(menuText(bar, 3, ids::IDM_HOTKEYS), L"Tastenk"));
+        check(Tr(L"Programm: Tastenkuerzel-Punkt vorhanden"),
+              menuText(bar, 3, ids::IDM_HOTKEYS) == Tr(L"Globale Tastenkürzel benutzen"));
     }
-    check(L"Systemmenue vorhanden", GetSystemMenu(hwnd, FALSE) != nullptr);
+    check(Tr(L"Systemmenue vorhanden"), GetSystemMenu(hwnd, FALSE) != nullptr);
 
     if (hotkeysOn) {
         // Noch einmal dasselbe Kuerzel anmelden: nur wenn das scheitert, gehoert es uns.
         const bool second = RegisterHotKey(hwnd, 0xF101, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 'W') != FALSE;
         if (second) UnregisterHotKey(hwnd, 0xF101);
-        check(L"Strg+Alt+W ist angemeldet", !second);
+        check(Tr(L"Strg+Alt+W ist angemeldet"), !second);
     } else {
-        out += L"ueberspr. globale Tastenkuerzel sind abgeschaltet\r\n";
+        out += Tr(L"ueberspr. globale Tastenkuerzel sind abgeschaltet\r\n");
     }
 
     HideToTray();
-    check(L"Fenster ist nach dem Schliessen versteckt", !IsWindowVisible(hwnd));
-    check(L"Symbol in der Taskleiste angelegt", trayReady);
+    check(Tr(L"Fenster ist nach dem Schliessen versteckt"), !IsWindowVisible(hwnd));
+    check(Tr(L"Symbol in der Taskleiste angelegt"), trayReady);
 
     HMENU trayMenu = MakeTrayMenu();
     const int items = trayMenu ? GetMenuItemCount(trayMenu) : 0;
     wchar_t last[256] = { 0 };
     if (trayMenu && items > 0) GetMenuStringW(trayMenu, static_cast<UINT>(items - 1), last, 255, MF_BYPOSITION);
-    check(L"Taskleisten-Menue mit Beenden-Punkt", trayMenu != nullptr && items >= 6 && has(last, L"Beenden"));
+    check(Tr(L"Taskleisten-Menue mit Beenden-Punkt"), trayMenu != nullptr && items >= 6 && has(last, Tr(L"Beenden")));
     if (trayMenu) DestroyMenu(trayMenu);
 
     PostMessageW(hwnd, ids::WM_APP_TRAY, static_cast<WPARAM>(ids::TRAY_UID),
@@ -1616,14 +1626,69 @@ int App::SelfTest() {
             DispatchMessageW(&m);
         } else Sleep(25);
     }
-    check(L"Klick aufs Symbol holt das Fenster zurueck", IsWindowVisible(hwnd));
+    check(Tr(L"Klick aufs Symbol holt das Fenster zurueck"), IsWindowVisible(hwnd));
 
     // Nach einem Neustart der Taskleiste ist das Symbol weg und muss neu eingetragen werden.
     HideTray();
-    check(L"Symbol wird nach Taskleisten-Neustart neu angelegt", ShowTray());
+    check(Tr(L"Symbol wird nach Taskleisten-Neustart neu angelegt"), ShowTray());
     HideTray();
 
-    out += L"\r\nPunkte nicht in Ordnung: " + std::to_wstring(bad) + L"\r\n";
+    // Sprache: das Umschalten muss bis in die Menues wirken, und keine sichtbare
+    // Beschriftung darf ohne Uebersetzung zurueckbleiben. Fehlende Texte werden
+    // aufgeschrieben, damit die Sprachdatei sie ergaenzen kann.
+    // Die beiden Dialoge werden hier nur zusammengesetzt, nicht gezeigt: ihre Texte
+    // gehoeren ebenso zur Oberflaeche und tauchen dann in der Vorlage auf.
+    ShowShortcutHelp(false);
+    ShowAbout(false);
+
+    lang::ForgetMissing();
+    SwitchLanguage(L"en");
+    HMENU barEn = GetMenu(hwnd);
+    check(Tr(L"Sprache Englisch: Menues neu gebaut"), barEn != nullptr);
+    if (barEn)
+        check(Tr(L"Sprache Englisch: Datei-Menue uebersetzt"),
+              menuText(barEn, 0, ids::IDM_RELOAD) == Tr(L"Neu laden\tF5"));
+    wchar_t titel[512] = { 0 };
+    GetWindowTextW(hwnd, titel, ARRAYSIZE(titel));
+    check(Tr(L"Sprache Englisch: Fenstertitel uebersetzt"),
+          std::wstring(titel) == Tr(L"RoutePerApp  \x2013  Internetweg pro Programm"));
+    wchar_t knopf[256] = { 0 };
+    if (btnReload) GetWindowTextW(btnReload, knopf, ARRAYSIZE(knopf));
+    check(Tr(L"Sprache Englisch: Knopfueberschrift uebersetzt"),
+          std::wstring(knopf) == Tr(L"Neu laden (F5)"));
+    wchar_t spalte[256] = { 0 };
+    LVCOLUMNW lc = {};
+    lc.mask = LVCF_TEXT;
+    lc.iSubItem = 2;
+    lc.pszText = spalte;
+    lc.cchTextMax = ARRAYSIZE(spalte);
+    if (list) SendMessageW(list, LVM_GETCOLUMNW, 2, reinterpret_cast<LPARAM>(&lc));
+    check(Tr(L"Sprache Englisch: Spaltenkopf uebersetzt"),
+          std::wstring(spalte) == Tr(L"Adapter heute"));
+    const size_t missing = lang::MissCount();
+    if (missing) {
+        std::wstring perr;
+        bool geschrieben = lang::WriteTemplate(engine.paths.dir + L"\\language.vorlage.json", &perr);
+        if (!geschrieben) {
+            wchar_t mod[MAX_PATH * 4] = { 0 };
+            if (GetModuleFileNameW(nullptr, mod, ARRAYSIZE(mod))) {
+                std::wstring p = mod;
+                const size_t s = p.find_last_of(L"\\/");
+                if (s != std::wstring::npos)
+                    geschrieben = lang::WriteTemplate(p.substr(0, s + 1) + L"language.vorlage.json", &perr);
+            }
+        }
+        if (geschrieben) out += Tr(L"Vorlage fuer fehlende Uebersetzungen geschrieben\r\n");
+        for (const std::wstring& key : lang::MissingKeys())
+            out += Tr(L"fehlt: ") + key + L"\r\n";
+    }
+    check(Tr(L"Sprache Englisch: keine Beschriftung ohne Uebersetzung"), missing == 0);
+    SwitchLanguage(L"de");
+    HMENU barDe = GetMenu(hwnd);
+    check(Tr(L"Sprache Deutsch: wiederhergestellt"),
+          barDe != nullptr && menuText(barDe, 0, ids::IDM_RELOAD) == Tr(L"Neu laden\tF5"));
+
+    out += Tr(L"\r\nPunkte nicht in Ordnung: ") + std::to_wstring(bad) + L"\r\n";
     std::wstring err;
     if (!WriteTextFileAtomic(engine.paths.dir + L"\\selbsttest.log", out, err)) {
         // Ohne Administratorrechte ist der Datenordner manchmal gesperrt - dann neben der Datei.
@@ -1689,14 +1754,14 @@ static bool LogonTaskExists(bool& exists) {
 // ohne das sonst übliche Nachfragen nach Administratorrechten.
 static bool CreateLogonTask(std::wstring& err) {
     const std::wstring exe = ThisExePath();
-    if (exe.empty()) { err = L"Pfad zum Programm nicht bekannt"; return false; }
+    if (exe.empty()) { err = Tr(L"Pfad zum Programm nicht bekannt"); return false; }
     // Der Programmpfad bekommt in der Aufgabe zusätzliche Anführungszeichen,
     // weil er Leerzeichen enthalten kann.
     const std::wstring args = std::wstring(L"/Create /F /TN ") + kSettingsName +
         L" /SC ONLOGON /RL HIGHEST /TR \"\\\"" + exe + L"\\\"\"";
     unsigned long code = 1;
     if (!RunHiddenAndWait(SchtasksPath(), args, code, err)) return false;
-    if (code != 0) { err = L"Aufgabe wurde nicht angelegt (Rückgabe " + std::to_wstring(code) + L")"; return false; }
+    if (code != 0) { err = Tr(L"Aufgabe wurde nicht angelegt (Rückgabe ") + std::to_wstring(code) + L")"; return false; }
     return true;
 }
 
@@ -1722,20 +1787,20 @@ static bool RunKeyOn(bool& on) {
 static bool SetRunKey(bool on, std::wstring& err) {
     HKEY key = nullptr;
     if (RegCreateKeyExW(HKEY_CURRENT_USER, kRunKeyPath, 0, nullptr, 0, KEY_WRITE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
-        err = L"Registry-Eintrag nicht erreichbar: " + LastErrText(GetLastError());
+        err = Tr(L"Registry-Eintrag nicht erreichbar: ") + LastErrText(GetLastError());
         return false;
     }
     bool ok = true;
     if (on) {
         const std::wstring exe = ThisExePath();
-        if (exe.empty()) { err = L"Pfad zum Programm nicht bekannt"; ok = false; }
+        if (exe.empty()) { err = Tr(L"Pfad zum Programm nicht bekannt"); ok = false; }
         else if (RegSetValueExW(key, kSettingsName, 0, REG_SZ, reinterpret_cast<const BYTE*>(exe.c_str()),
                                 static_cast<DWORD>((exe.size() + 1) * sizeof(wchar_t))) != ERROR_SUCCESS) {
-            err = L"Eintrag nicht geschrieben: " + LastErrText(GetLastError());
+            err = Tr(L"Eintrag nicht geschrieben: ") + LastErrText(GetLastError());
             ok = false;
         }
     } else if (RegDeleteValueW(key, kSettingsName) != ERROR_SUCCESS && GetLastError() != ERROR_FILE_NOT_FOUND) {
-        err = L"Eintrag nicht entfernt: " + LastErrText(GetLastError());
+        err = Tr(L"Eintrag nicht entfernt: ") + LastErrText(GetLastError());
         ok = false;
     }
     RegCloseKey(key);
@@ -1755,23 +1820,22 @@ void App::ToggleAutostart() {
         DeleteLogonTask();
         SetRunKey(false, err);
         RefreshAutostartState();
-        SetNote(L"Autostart abgeschaltet  \x2013  RoutePerApp startet nicht mehr von selbst.", 10);
+        SetNote(Tr(L"Autostart abgeschaltet  \x2013  RoutePerApp startet nicht mehr von selbst."), 10);
         return;
     }
     if (CreateLogonTask(err)) {
         RefreshAutostartState();
-        SetNote(L"Autostart eingeschaltet: RoutePerApp startet bei jeder Anmeldung ohne Nachfrage "
-                L"(geplante Aufgabe RoutePerApp in der Aufgabenplanung).", 16);
+        SetNote(Tr(L"Autostart eingeschaltet: RoutePerApp startet bei jeder Anmeldung ohne Nachfrage (geplante Aufgabe RoutePerApp in der Aufgabenplanung)."), 16);
         return;
     }
     std::wstring err2;
     if (SetRunKey(true, err2)) {
         RefreshAutostartState();
-        SetNote(L"Autostart über den Anmeldeschlüssel eingeschaltet (Aufgabe ging nicht: " + err +
-                L"). Windows fragt bei der Anmeldung nach Administratorrechten.", 20);
+        SetNote(Tr(L"Autostart über den Anmeldeschlüssel eingeschaltet (Aufgabe ging nicht: ") + err +
+                Tr(L"). Windows fragt bei der Anmeldung nach Administratorrechten."), 20);
         return;
     }
-    SetNote(L"Autostart nicht möglich: " + err, 14);
+    SetNote(Tr(L"Autostart nicht möglich: ") + err, 14);
 }
 
 // Der Weg für alle Programme, die keine eigene Zuordnung haben.
@@ -1780,15 +1844,15 @@ void App::SetDefaultRoute(Zone zone) {
     engine.rules.defaultMode = ZoneMode(zone);
     engine.rules.defaultAdapterGuid.clear();
     if (!engine.SaveAndPublish(err)) {
-        SetNote(L"Standardweg nicht gespeichert: " + err, 12);
+        SetNote(Tr(L"Standardweg nicht gespeichert: ") + err, 12);
         return;
     }
     int already = 0, failed = 0;
     std::wstring ierr;
     const int applied = engine.ReinjectMatching(ierr, already, failed);
-    std::wstring msg = L"Standardweg für alle Programme ohne eigene Zuordnung: ";
+    std::wstring msg = Tr(L"Standardweg für alle Programme ohne eigene Zuordnung: ");
     msg += ZoneName(zone);
-    msg += L"  \x2013  " + InjectionSummary(applied, already, failed, ierr);
+    msg += Tr(L"  \x2013  ") + InjectionSummary(applied, already, failed, ierr);
     SetNote(msg, 14);
     RefreshAll(false);
 }
@@ -1800,14 +1864,17 @@ void App::LoadSettings() {
     JsonPtr root;
     if (!JsonParse(text, root).ok) return;
     hotkeysOn = root->boolOr(L"hotkeys", true);
+    const std::wstring saved = root->strOr(L"language", L"de");
+    if (!saved.empty()) language = saved;
 }
 
 void App::SaveSettings() {
     JsonPtr root = Json::MakeObject();
     root->set(L"hotkeys", Json::MakeBool(hotkeysOn));
+    root->set(L"language", Json::MakeString(language));
     std::wstring err;
     if (!WriteTextFileAtomic(engine.paths.dir + L"\\settings.json", JsonSerialize(root, true), err))
-        SetNote(L"Einstellungen nicht gespeichert: " + err, 10);
+        SetNote(Tr(L"Einstellungen nicht gespeichert: ") + err, 10);
 }
 
 void App::RegisterHotkeys() {
@@ -1817,7 +1884,7 @@ void App::RegisterHotkeys() {
     struct Entry { int id; WORD vk; const wchar_t* what; };
     const Entry table[] = {
         { ids::HK_WLAN, 'W', L"WLAN" }, { ids::HK_LAN, 'L', L"LAN" },
-        { ids::HK_STANDARD, 'S', L"Standard" }, { ids::HK_RAISE, 'H', L"Fenster holen" }
+        { ids::HK_STANDARD, 'S', L"Standard" }, { ids::HK_RAISE, 'H', Tr(L"Fenster holen") }
     };
     std::wstring failed;
     for (const Entry& e : table) {
@@ -1827,7 +1894,7 @@ void App::RegisterHotkeys() {
     }
     hotkeysRegistered = failed.empty();
     if (!hotkeysRegistered)
-        SetNote(L"Globale Tastenkürzel teilweise nicht möglich (anderes Programm belegt sie): " + failed, 16);
+        SetNote(Tr(L"Globale Tastenkürzel teilweise nicht möglich (anderes Programm belegt sie): ") + failed, 16);
 }
 
 void App::UnregisterHotkeys() {
@@ -1841,9 +1908,8 @@ void App::ToggleHotkeys() {
     hotkeysOn = !hotkeysOn;
     if (hotkeysOn) RegisterHotkeys(); else UnregisterHotkeys();
     SaveSettings();
-    SetNote(hotkeysOn ? L"Globale Tastenkürzel an: Strg+Alt+W / L / S für das Vordergrundprogramm, "
-                      L"Strg+Alt+H holt das Fenster."
-                      : L"Globale Tastenkürzel abgeschaltet.", 12);
+    SetNote(hotkeysOn ? Tr(L"Globale Tastenkürzel an: Strg+Alt+W / L / S für das Vordergrundprogramm, Strg+Alt+H holt das Fenster.")
+                      : Tr(L"Globale Tastenkürzel abgeschaltet."), 12);
 }
 
 // Tastenkürzel wirken auf das Programm, dessen Fenster gerade Vordergrund ist.
@@ -1851,17 +1917,17 @@ void App::OnHotkey(int which) {
     if (which == ids::HK_RAISE) { RestoreFromTray(); return; }
 
     HWND fg = GetForegroundWindow();
-    if (!fg) { SetNote(L"Kein Vordergrundfenster gefunden.", 6); return; }
+    if (!fg) { SetNote(Tr(L"Kein Vordergrundfenster gefunden."), 6); return; }
     DWORD pid = 0;
     GetWindowThreadProcessId(fg, &pid);
-    if (pid == GetCurrentProcessId()) { SetNote(L"RoutePerApp selbst wird nicht umgebogen.", 6); return; }
+    if (pid == GetCurrentProcessId()) { SetNote(Tr(L"RoutePerApp selbst wird nicht umgebogen."), 6); return; }
 
     HANDLE proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
     wchar_t buf[MAX_PATH * 4] = {};
     DWORD n = ARRAYSIZE(buf);
     if (!proc || !QueryFullProcessImageNameW(proc, 0, buf, &n)) {
         if (proc) CloseHandle(proc);
-        SetNote(L"Das Vordergrundprogramm ist nicht feststellbar  \x2013  erst sein Fenster anklicken.", 8);
+        SetNote(Tr(L"Das Vordergrundprogramm ist nicht feststellbar  \x2013  erst sein Fenster anklicken."), 8);
         return;
     }
     CloseHandle(proc);
@@ -1885,50 +1951,118 @@ static HMENU MakeMenuBar() {
     if (!bar) return nullptr;
 
     HMENU file = CreatePopupMenu();
-    AppendMenuW(file, MF_STRING, ids::IDM_RELOAD, L"Neu laden\tF5");
-    AppendMenuW(file, MF_STRING, ids::IDM_REINJECT, L"Laufende Programme neu binden");
+    AppendMenuW(file, MF_STRING, ids::IDM_RELOAD, Tr(L"Neu laden\tF5"));
+    AppendMenuW(file, MF_STRING, ids::IDM_REINJECT, Tr(L"Laufende Programme neu binden"));
     AppendMenuW(file, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(file, MF_STRING, ids::IDM_HIDE, L"In die Taskleiste legen");
+    AppendMenuW(file, MF_STRING, ids::IDM_HIDE, Tr(L"In die Taskleiste legen"));
     AppendMenuW(file, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(file, MF_STRING, ids::IDM_AUTOSTART, L"Bei Windows-Anmeldung starten");
+    AppendMenuW(file, MF_STRING, ids::IDM_AUTOSTART, Tr(L"Bei Windows-Anmeldung starten"));
     AppendMenuW(file, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(file, MF_STRING, ids::IDM_EXIT, L"Beenden\tStrg+Q");
-    AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"Datei");
+    AppendMenuW(file, MF_STRING, ids::IDM_EXIT, Tr(L"Beenden\tStrg+Q"));
+    AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(file), Tr(L"Datei"));
 
     HMENU edit = CreatePopupMenu();
-    AppendMenuW(edit, MF_STRING, ids::IDM_UNDO, L"Rückgängig\tStrg+Z");
-    AppendMenuW(edit, MF_STRING, ids::IDM_CLEAR, L"Zuordnung aufheben\tEntf");
+    AppendMenuW(edit, MF_STRING, ids::IDM_UNDO, Tr(L"Rückgängig\tStrg+Z"));
+    AppendMenuW(edit, MF_STRING, ids::IDM_CLEAR, Tr(L"Zuordnung aufheben\tEntf"));
     AppendMenuW(edit, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(edit, MF_STRING, ids::IDM_DETAILS, L"Details\tEnter");
-    AppendMenuW(edit, MF_STRING, ids::IDM_COPY_PATH, L"Programmpfad kopieren");
-    AppendMenuW(edit, MF_STRING, ids::IDM_FOCUS_SEARCH, L"Suchfeld\tStrg+F");
-    AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(edit), L"Bearbeiten");
+    AppendMenuW(edit, MF_STRING, ids::IDM_DETAILS, Tr(L"Details\tEnter"));
+    AppendMenuW(edit, MF_STRING, ids::IDM_COPY_PATH, Tr(L"Programmpfad kopieren"));
+    AppendMenuW(edit, MF_STRING, ids::IDM_FOCUS_SEARCH, Tr(L"Suchfeld\tStrg+F"));
+    AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(edit), Tr(L"Bearbeiten"));
 
     HMENU way = CreatePopupMenu();
-    AppendMenuW(way, MF_STRING, ids::IDM_ZONE_WLAN, L"markierte Programme  \x2192  WLAN");
-    AppendMenuW(way, MF_STRING, ids::IDM_ZONE_LAN, L"markierte Programme  \x2192  LAN");
-    AppendMenuW(way, MF_STRING, ids::IDM_ZONE_STANDARD, L"markierte Programme  \x2192  Standard");
+    AppendMenuW(way, MF_STRING, ids::IDM_ZONE_WLAN, Tr(L"markierte Programme  \x2192  WLAN"));
+    AppendMenuW(way, MF_STRING, ids::IDM_ZONE_LAN, Tr(L"markierte Programme  \x2192  LAN"));
+    AppendMenuW(way, MF_STRING, ids::IDM_ZONE_STANDARD, Tr(L"markierte Programme  \x2192  Standard"));
     AppendMenuW(way, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(way, MF_STRING, ids::IDM_DEF_WLAN, L"ohne eigene Zuordnung  \x2192  WLAN");
-    AppendMenuW(way, MF_STRING, ids::IDM_DEF_LAN, L"ohne eigene Zuordnung  \x2192  LAN");
-    AppendMenuW(way, MF_STRING, ids::IDM_DEF_STANDARD, L"ohne eigene Zuordnung  \x2192  Windows-Standard");
-    AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(way), L"Weg");
+    AppendMenuW(way, MF_STRING, ids::IDM_DEF_WLAN, Tr(L"ohne eigene Zuordnung  \x2192  WLAN"));
+    AppendMenuW(way, MF_STRING, ids::IDM_DEF_LAN, Tr(L"ohne eigene Zuordnung  \x2192  LAN"));
+    AppendMenuW(way, MF_STRING, ids::IDM_DEF_STANDARD, Tr(L"ohne eigene Zuordnung  \x2192  Windows-Standard"));
+    AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(way), Tr(L"Weg"));
 
     HMENU win = CreatePopupMenu();
-    AppendMenuW(win, MF_STRING, ids::IDM_RESTART_ADMIN, L"Als Administrator neu starten");
+    AppendMenuW(win, MF_STRING, ids::IDM_RESTART_ADMIN, Tr(L"Als Administrator neu starten"));
     AppendMenuW(win, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(win, MF_STRING, ids::IDM_HOTKEYS, L"Globale Tastenkürzel benutzen");
-    AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(win), L"Programm");
+    AppendMenuW(win, MF_STRING, ids::IDM_HOTKEYS, Tr(L"Globale Tastenkürzel benutzen"));
+    AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(win), Tr(L"Programm"));
 
     HMENU help = CreatePopupMenu();
-    AppendMenuW(help, MF_STRING, ids::IDM_KEYS, L"Tastenkürzel und Ablauf");
-    AppendMenuW(help, MF_STRING, ids::IDM_ABOUT, L"Über RoutePerApp");
-    AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(help), L"?");
+    AppendMenuW(help, MF_STRING, ids::IDM_KEYS, Tr(L"Tastenkürzel und Ablauf"));
+    AppendMenuW(help, MF_STRING, ids::IDM_ABOUT, Tr(L"Über RoutePerApp"));
+    AppendMenuW(help, MF_SEPARATOR, 0, nullptr);
+    HMENU langMenu = CreatePopupMenu();
+    AppendMenuW(langMenu, MF_STRING, ids::IDM_LANG_DE, L"Deutsch");
+    AppendMenuW(langMenu, MF_STRING, ids::IDM_LANG_EN, L"English");
+    AppendMenuW(help, MF_POPUP, reinterpret_cast<UINT_PTR>(langMenu), Tr(L"Sprache"));
+    AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(help), Tr(L"?"));
     return bar;
 }
 
 void App::ShowMenu() {
     if (hwnd) SetMenu(hwnd, MakeMenuBar());
+}
+
+// Verzeichnis der eigenen Datei: Sprachdateien koennen neben dem Programm liegen.
+static std::wstring ThisExeDir() {
+    wchar_t buf[MAX_PATH] = {};
+    const DWORD n = GetModuleFileNameW(nullptr, buf, ARRAYSIZE(buf));
+    if (!n) return L".";
+    std::wstring path(buf, n);
+    const size_t slash = path.find_last_of(L"\\/");
+    return slash == std::wstring::npos ? std::wstring(L".") : path.substr(0, slash);
+}
+
+// Sprache umschalten, ohne das Programm neu zu starten: jeder Text wird neu geholt und
+// jede Stelle, die einen Text zeigt, bekommt ihn erneut. Die Menues entstehen ganz neu,
+// Spaltenkoepfe werden ersetzt, Zellen und Karten neu gebildet, das Fachtext neu gesetzt.
+void App::SwitchLanguage(const std::wstring& code) {
+    const std::wstring want = code.empty() ? std::wstring(L"de") : code;
+    language = want;
+    std::wstring problem;
+    lang::Init(want, ThisExeDir(), engine.paths.dir, &problem);
+    if (!problem.empty()) SetNote(problem, 12);
+
+    if (hwnd) {
+        HMENU bar = MakeMenuBar();
+        if (bar) { SetMenu(hwnd, bar); DrawMenuBar(hwnd); }
+        SetWindowTextW(hwnd, Tr(L"RoutePerApp  \x2013  Internetweg pro Programm"));
+    }
+    if (list) {
+        const wchar_t* names[COL_COUNT] = {
+            Tr(L"Programm"), L"PID", Tr(L"Adapter heute"),
+            Tr(L"WLAN"), Tr(L"LAN"), Tr(L"Standard"), Tr(L"Benutzer")
+        };
+        LVCOLUMNW lc = {};
+        lc.mask = LVCF_TEXT;
+        for (int c = 0; c < COL_COUNT; ++c) {
+            lc.iSubItem = c;
+            lc.pszText = const_cast<wchar_t*>(names[c]);
+            SendMessageW(list, LVM_SETCOLUMNW, static_cast<WPARAM>(c), reinterpret_cast<LPARAM>(&lc));
+        }
+        for (int i = 0; i < 3; ++i) headerCache[i].clear();
+    }
+    if (search)
+        SendMessageW(search, EM_SETCUEBANNER, TRUE,
+                     reinterpret_cast<LPARAM>(Tr(L"Programm oder Benutzer suchen")));
+    if (chkNet) SetWindowTextW(chkNet, Tr(L"nur mit Verbindung"));
+    if (btnReload) SetWindowTextW(btnReload, Tr(L"Neu laden (F5)"));
+    if (btnAdmin) SetWindowTextW(btnAdmin, Tr(L"Als Administrator neu starten"));
+    for (int i = 1; i <= 3; ++i) if (cards[i]) InvalidateRect(cards[i], nullptr, TRUE);
+
+    cellCache.clear();
+    SyncTable(true);
+    UpdateHeaderLabels();
+    UpdateCards();
+    note.clear();
+    noteUntil = 0;
+    if (hwnd) InvalidateRect(hwnd, nullptr, TRUE);
+
+    if (trayReady) {
+        lstrcpynW(tray.szTip, Tr(L"RoutePerApp  \x2013  Internetweg pro Programm"),
+                  static_cast<int>(sizeof(tray.szTip) / sizeof(wchar_t)));
+        Shell_NotifyIconW(NIM_MODIFY, &tray);
+    }
+    SaveSettings();
 }
 
 void App::RefreshMenu(HMENU bar) {
@@ -1949,6 +2083,9 @@ void App::RefreshMenu(HMENU bar) {
         EnableMenuItem(sub, ids::IDM_RESTART_ADMIN, MF_BYCOMMAND | (elevated ? MF_GRAYED : MF_ENABLED));
         CheckMenuItem(sub, ids::IDM_AUTOSTART, MF_BYCOMMAND | (autostartOn ? MF_CHECKED : MF_UNCHECKED));
         CheckMenuItem(sub, ids::IDM_HOTKEYS, MF_BYCOMMAND | (hotkeysOn ? MF_CHECKED : MF_UNCHECKED));
+        const bool de = (lang::Language() == L"de");
+        CheckMenuItem(sub, ids::IDM_LANG_DE, MF_BYCOMMAND | (de ? MF_CHECKED : MF_UNCHECKED));
+        CheckMenuItem(sub, ids::IDM_LANG_EN, MF_BYCOMMAND | (de ? MF_UNCHECKED : MF_CHECKED));
         CheckMenuItem(sub, ids::IDM_DEF_WLAN, MF_BYCOMMAND |
                     (engine.rules.defaultMode == RouteMode::Wlan ? MF_CHECKED : MF_UNCHECKED));
         CheckMenuItem(sub, ids::IDM_DEF_LAN, MF_BYCOMMAND |
@@ -1958,37 +2095,38 @@ void App::RefreshMenu(HMENU bar) {
     }
 }
 
-void App::ShowAbout() {
+void App::ShowAbout(bool show) {
     std::wstring t;
-    t += L"RoutePerApp  \x2013  Internetweg pro Programm  (Fassung " + std::wstring(kAppVersion) + L")\r\n\r\n";
-    t += L"Jedes Programm läuft über die Netzwerkkarte, die du ihm gibst: WLAN, LAN oder die\r\n";
-    t += L"ganz normale Windows-Routenwahl. Zugewiesen wird per Drag & Drop auf eine Karte.\r\n\r\n";
-    t += L"Das Programm bleibt nach dem Schließen des Fensters im Hintergrund laufen, sonst\r\n";
-    t += L"greifen die Zuordnungen nicht für Programme, die später gestartet werden.\r\n";
-    t += L"Beenden: Symbol in der Taskleiste  \x2192  Beenden, oder Datei  \x2192  Beenden.\r\n\r\n";
-    t += elevated ? L"läuft mit Administratorrechten"
-                  : L"läuft ohne Administratorrechte  \x2013  Programme anderer Benutzer und Dienste\r\n"
-                    L"können nicht umgebogen werden (Programm  \x2192  Als Administrator neu starten)";
-    MessageBoxW(hwnd, t.c_str(), L"Über RoutePerApp", MB_OK | MB_ICONINFORMATION);
+    t += Tr(L"RoutePerApp  \x2013  Internetweg pro Programm  (Fassung ") + std::wstring(kAppVersion) + Tr(L")\r\n\r\n");
+    t += Tr(L"Jedes Programm läuft über die Netzwerkkarte, die du ihm gibst: WLAN, LAN oder die\r\n");
+    t += Tr(L"ganz normale Windows-Routenwahl. Zugewiesen wird per Drag & Drop auf eine Karte.\r\n\r\n");
+    t += Tr(L"Das Programm bleibt nach dem Schließen des Fensters im Hintergrund laufen, sonst\r\n");
+    t += Tr(L"greifen die Zuordnungen nicht für Programme, die später gestartet werden.\r\n");
+    t += Tr(L"Beenden: Symbol in der Taskleiste  \x2192  Beenden, oder Datei  \x2192  Beenden.\r\n\r\n");
+    t += elevated ? Tr(L"läuft mit Administratorrechten")
+                  : Tr(L"läuft ohne Administratorrechte  \u2013  Programme anderer Benutzer und Dienste\r\nkönnen nicht umgebogen werden (Programm  \u2192  Als Administrator neu starten)");
+    if (!show) return;
+    MessageBoxW(hwnd, t.c_str(), Tr(L"Über RoutePerApp"), MB_OK | MB_ICONINFORMATION);
 }
 
-void App::ShowShortcutHelp() {
+void App::ShowShortcutHelp(bool show) {
     std::wstring t;
-    t += L"In der Liste: ein Programm markieren, dann auf eine Karte oder in eine Spalte ziehen.\r\n\r\n";
-    t += L"F5            neu laden\r\n";
-    t += L"Strg+F        Suchfeld\r\n";
-    t += L"Enter         Details des markierten Programms\r\n";
-    t += L"Entf          Zuordnung aufheben\r\n";
-    t += L"Strg+Z        letzte Zuordnung rückgängig\r\n";
-    t += L"Strg+Q        RoutePerApp beenden\r\n";
-    t += L"Fenster zu    RoutePerApp läuft im Hintergrund weiter\r\n\r\n";
-    t += L"Globale Kürzel (gelten auch bei verstecktem Fenster):\r\n";
-    t += L"Strg+Alt+W    Vordergrundprogramm  ->  WLAN\r\n";
-    t += L"Strg+Alt+L    Vordergrundprogramm  ->  LAN\r\n";
-    t += L"Strg+Alt+S    Vordergrundprogramm  ->  Windows-Standard\r\n";
-    t += L"Strg+Alt+H    RoutePerApp-Fenster holen\r\n";
-    t += L"Abzuschalten über Programm  ->  Globale Tastenkürzel benutzen.\r\n";
-    MessageBoxW(hwnd, t.c_str(), L"Tastenkürzel", MB_OK | MB_ICONINFORMATION);
+    t += Tr(L"In der Liste: ein Programm markieren, dann auf eine Karte oder in eine Spalte ziehen.\r\n\r\n");
+    t += Tr(L"F5            neu laden\r\n");
+    t += Tr(L"Strg+F        Suchfeld\r\n");
+    t += Tr(L"Enter         Details des markierten Programms\r\n");
+    t += Tr(L"Entf          Zuordnung aufheben\r\n");
+    t += Tr(L"Strg+Z        letzte Zuordnung rückgängig\r\n");
+    t += Tr(L"Strg+Q        RoutePerApp beenden\r\n");
+    t += Tr(L"Fenster zu    RoutePerApp läuft im Hintergrund weiter\r\n\r\n");
+    t += Tr(L"Globale Kürzel (gelten auch bei verstecktem Fenster):\r\n");
+    t += Tr(L"Strg+Alt+W    Vordergrundprogramm  ->  WLAN\r\n");
+    t += Tr(L"Strg+Alt+L    Vordergrundprogramm  ->  LAN\r\n");
+    t += Tr(L"Strg+Alt+S    Vordergrundprogramm  ->  Windows-Standard\r\n");
+    t += Tr(L"Strg+Alt+H    RoutePerApp-Fenster holen\r\n");
+    t += Tr(L"Abzuschalten über Programm  ->  Globale Tastenkürzel benutzen.\r\n");
+    if (!show) return;
+    MessageBoxW(hwnd, t.c_str(), Tr(L"Tastenkürzel"), MB_OK | MB_ICONINFORMATION);
 }
 
 // ---------------------------------------------------------------- Details und Menü
@@ -1997,15 +2135,15 @@ void App::ShowDetailsFor(unsigned long pid) {
     const ProcRow* r = RowForPid(pid);
     if (!r) return;
     std::wstring t;
-    t += L"Programm:  " + r->image + L"\r\n";
-    t += L"PID:  " + std::to_wstring(r->pid) + (r->is32Bit ? L"   (32 Bit)" : L"   (64 Bit)") + L"\r\n";
-    t += L"Benutzer:  " + (r->user.empty() ? std::wstring(L"unbekannt") : r->user) + L"\r\n";
-    t += L"Pfad:  " + (r->path.empty() ? std::wstring(L"nicht lesbar") : r->path) + L"\r\n";
-    t += L"Verbindungen gerade:  " + std::to_wstring(r->conns) + L"\r\n";
-    t += L"Aktueller Adapter:  " + ViaCell(*r) + L"\r\n";
-    t += L"Ziel:  " + ModeLabel(r->mode) + L"   \x2013   " + RowStateText(*r) + L"\r\n";
-    if (r->ruleId != 0) t += L"Regel:  #" + std::to_wstring(r->ruleId) + L"\r\n";
-    if (r->mode == RouteMode::Adapter && !r->modeGuid.empty()) t += L"fester Adapter:  " + r->modeGuid + L"\r\n";
+    t += Tr(L"Programm:  ") + r->image + L"\r\n";
+    t += Tr(L"PID:  ") + std::to_wstring(r->pid) + (r->is32Bit ? Tr(L"   (32 Bit)") : Tr(L"   (64 Bit)")) + L"\r\n";
+    t += Tr(L"Benutzer:  ") + (r->user.empty() ? std::wstring(Tr(L"unbekannt")) : r->user) + L"\r\n";
+    t += Tr(L"Pfad:  ") + (r->path.empty() ? std::wstring(Tr(L"nicht lesbar")) : r->path) + L"\r\n";
+    t += Tr(L"Verbindungen gerade:  ") + std::to_wstring(r->conns) + L"\r\n";
+    t += Tr(L"Aktueller Adapter:  ") + ViaCell(*r) + L"\r\n";
+    t += Tr(L"Ziel:  ") + ModeLabel(r->mode) + Tr(L"   \x2013   ") + RowStateText(*r) + L"\r\n";
+    if (r->ruleId != 0) t += Tr(L"Regel:  #") + std::to_wstring(r->ruleId) + L"\r\n";
+    if (r->mode == RouteMode::Adapter && !r->modeGuid.empty()) t += Tr(L"fester Adapter:  ") + r->modeGuid + L"\r\n";
 
     const std::wstring dll = engine.HookDllFor(r->is32Bit);
     ProcInfo pi;
@@ -2018,20 +2156,20 @@ void App::ShowDetailsFor(unsigned long pid) {
     pi.is32Bit = r->is32Bit;
     std::wstring why;
     const bool can = CanInjectProcess(pi, elevated, FileExists(dll), why);
-    t += L"sofortige Bindung:  " + (can ? std::wstring(L"m\xF6" L"glich") : why) + L"\r\n";
+    t += Tr(L"sofortige Bindung:  ") + (can ? std::wstring(Tr(L"möglich")) : why) + L"\r\n";
     if (r->injected) {
-        t += L"Hook-Bibliothek ist geladen\r\n";
+        t += Tr(L"Hook-Bibliothek ist geladen\r\n");
         unsigned long mask = 0;
         std::wstring e2;
         if (QueryHookPatchMask(r->pid, dll, mask, e2)) {
-            t += L"aktive Abfangstellen:  " + std::to_wstring(mask) + L" (Bitmaske)\r\n";
+            t += Tr(L"aktive Abfangstellen:  ") + std::to_wstring(mask) + Tr(L" (Bitmaske)\r\n");
         }
         unsigned long idx = 0;
         if (QueryHookIfIndex(r->pid, dll, idx, e2) && idx != 0) {
-            t += L"gebundener Interface-Index:  " + std::to_wstring(idx) + L"\r\n";
+            t += Tr(L"gebundener Interface-Index:  ") + std::to_wstring(idx) + L"\r\n";
         }
     }
-    MessageBoxW(hwnd, t.c_str(), L"Details", MB_OK | MB_ICONINFORMATION);
+    MessageBoxW(hwnd, t.c_str(), Tr(L"Details"), MB_OK | MB_ICONINFORMATION);
 }
 
 static void CopyToClipboard(HWND owner, const std::wstring& text) {
@@ -2085,19 +2223,19 @@ void App::ShowContextMenu(POINT ptScreen) {
 
     HMENU menu = CreatePopupMenu();
     const bool haveSel = !sel.empty();
-    const std::wstring undoLabel = L"R\xFC" L"ckg\xE4" L"ngig" +
+    const std::wstring undoLabel = Tr(L"Rückgängig") +
         (undoStack.Empty() ? std::wstring() : (L":  " + undoStack.TopLabel()));
-    AppendMenuW(menu, MF_STRING, ids::IDM_ZONE_WLAN, L"\xFC" L"ber WLAN (5G-Router)");
-    AppendMenuW(menu, MF_STRING, ids::IDM_ZONE_LAN, L"\xFC" L"ber LAN (Fritzbox)");
-    AppendMenuW(menu, MF_STRING, ids::IDM_ZONE_STANDARD, L"Windows-Standard (Bindung l\xF6" L"schen)");
+    AppendMenuW(menu, MF_STRING, ids::IDM_ZONE_WLAN, Tr(L"\u00FCber WLAN (5G-Router)"));
+    AppendMenuW(menu, MF_STRING, ids::IDM_ZONE_LAN, Tr(L"\u00FCber LAN (Fritzbox)"));
+    AppendMenuW(menu, MF_STRING, ids::IDM_ZONE_STANDARD, Tr(L"Windows-Standard (Bindung l\u00F6schen)"));
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, ids::IDM_CLEAR, L"Zuordnung entfernen");
+    AppendMenuW(menu, MF_STRING, ids::IDM_CLEAR, Tr(L"Zuordnung entfernen"));
     AppendMenuW(menu, MF_STRING, ids::IDM_UNDO, undoLabel.c_str());
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, ids::IDM_DETAILS, L"Details");
-    AppendMenuW(menu, MF_STRING, ids::IDM_COPY_PATH, L"Programmpfad kopieren");
-    AppendMenuW(menu, MF_STRING, ids::IDM_RELOAD, L"Neu laden (F5)");
-    if (!elevated) AppendMenuW(menu, MF_STRING, ids::IDM_RESTART_ADMIN, L"Als Administrator neu starten");
+    AppendMenuW(menu, MF_STRING, ids::IDM_COPY_PATH, Tr(L"Programmpfad kopieren"));
+    AppendMenuW(menu, MF_STRING, ids::IDM_RELOAD, Tr(L"Neu laden (F5)"));
+    if (!elevated) AppendMenuW(menu, MF_STRING, ids::IDM_RESTART_ADMIN, Tr(L"Als Administrator neu starten"));
 
     EnableMenuItem(menu, ids::IDM_ZONE_WLAN, haveSel ? MF_ENABLED : MF_GRAYED);
     EnableMenuItem(menu, ids::IDM_ZONE_LAN, haveSel ? MF_ENABLED : MF_GRAYED);
@@ -2157,8 +2295,7 @@ int APIENTRY wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int nCmdShow) 
                          static_cast<LPARAM>(MAKELONG(ids::TRAY_UID, WM_LBUTTONUP)));  // wie ein Klick aufs Symbol
             SetForegroundWindow(other);
         } else {
-            MessageBoxW(nullptr, L"RoutePerApp läuft bereits, aber sein Fenster wurde nicht gefunden.\n"
-                                  L"Im Zweifelsfall über den Task-Manager beenden.",
+            MessageBoxW(nullptr, Tr(L"RoutePerApp läuft bereits, aber sein Fenster wurde nicht gefunden.\nIm Zweifelsfall über den Task-Manager beenden."),
                         L"RoutePerApp", MB_OK | MB_ICONINFORMATION);
         }
         if (single) CloseHandle(single);
@@ -2178,6 +2315,30 @@ int APIENTRY wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int nCmdShow) 
     g_app = &app;
     if (cmdLine && (wcsstr(cmdLine, L"--selbsttest") || wcsstr(cmdLine, L"/selbsttest")))
         app.selfTest = true;
+
+    // Sprache beim Start: "routeperapp.exe --sprache en" (auch /sprache en). Ohne Angabe
+    // wird Deutsch benutzt, die Sprache des Quelltextes. Gespeicherte Wahl kommt dazu.
+    std::wstring wanted = L"de";
+    if (cmdLine) {
+        const wchar_t* at = wcsstr(cmdLine, L"--sprache");
+        if (!at) at = wcsstr(cmdLine, L"/sprache");
+        if (at) {
+            at += 9;
+            while (*at == L' ' || *at == L'=' || *at == L':') ++at;
+            wchar_t code[8] = {};
+            size_t take = 0;
+            while (take < 6 && at[take] != 0 && at[take] != L' ' && at[take] != L'"') {
+                wchar_t c = at[take];
+                if (c >= L'A' && c <= L'Z') c = static_cast<wchar_t>(c - L'A' + L'a');
+                code[take] = c;
+                ++take;
+            }
+            if (take) wanted = std::wstring(code, take);
+        }
+    }
+    app.language = wanted;
+    std::wstring langProblem;
+    lang::Init(wanted, ThisExeDir(), app.engine.paths.dir, &langProblem);
     g_taskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
     // Das Symbol kommt aus der Resourcedatei (app.ico, aus assets/logo.png gebaut), damit
     // Datei, Fenster, Taskleiste und das verborgene Fach dasselbe Zeichen zeigen.
@@ -2185,7 +2346,7 @@ int APIENTRY wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int nCmdShow) 
     if (!app.appIcon) app.appIcon = LoadIconW(nullptr, IDI_APPLICATION);
 
     if (!RegisterClasses(hinst, app.appIcon)) {
-        MessageBoxW(nullptr, (L"Fensterklassen konnten nicht angelegt werden: " + LastErrText(GetLastError())).c_str(),
+        MessageBoxW(nullptr, (Tr(L"Fensterklassen konnten nicht angelegt werden: ") + LastErrText(GetLastError())).c_str(),
                     L"RoutePerApp", MB_OK | MB_ICONERROR);
         OleUninitialize();
         return 1;
@@ -2194,12 +2355,12 @@ int APIENTRY wWinMain(HINSTANCE hinst, HINSTANCE, LPWSTR cmdLine, int nCmdShow) 
     const int w = S(1180);
     const int h = S(760);
     HWND hwnd = CreateWindowExW(WS_EX_APPWINDOW, L"RoutePerApp.MainWindow",
-                                L"RoutePerApp  \x2013  Internetweg pro Programm",
+                                Tr(L"RoutePerApp  \x2013  Internetweg pro Programm"),
                                 WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
                                 CW_USEDEFAULT, CW_USEDEFAULT, w, h,
                                 nullptr, MakeMenuBar(), hinst, &app);
     if (!hwnd) {
-        MessageBoxW(nullptr, (L"Fenster konnte nicht ge\xF6" L"ffnet werden: " + LastErrText(GetLastError())).c_str(),
+        MessageBoxW(nullptr, (Tr(L"Fenster konnte nicht ge\u00F6ffnet werden: ") + LastErrText(GetLastError())).c_str(),
                     L"RoutePerApp", MB_OK | MB_ICONERROR);
         OleUninitialize();
         return 1;

@@ -5,6 +5,9 @@
 
 IDI_APP ICON "app.ico"
 
+// Sprachtabellen als eingebettete Datei (lang\en.json), siehe src/lang.cpp.
+IDR_LANG_EN RCDATA "lang\en.json"
+
 VS_VERSION_INFO VERSIONINFO
  FILEVERSION 1,0,0,0
  PRODUCTVERSION 1,0,0,0

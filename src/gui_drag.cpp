@@ -294,7 +294,7 @@ HRESULT SrDropTarget::Drop(IDataObject* data, DWORD, POINTL ptScreen, DWORD* pdw
     app->FinishDragFeedback();
 
     if (target == Zone::None) {
-        app->SetNote(L"Bitte genau auf die Spalte WLAN, LAN oder Standard ziehen - oder auf eine der drei Karten.", 8);
+        app->SetNote(Tr(L"Bitte genau auf die Spalte WLAN, LAN oder Standard ziehen - oder auf eine der drei Karten."), 8);
         return S_OK;
     }
 

@@ -103,6 +103,10 @@ public:
     void RefreshAll(bool withAdapters);
     void LayoutChildren(int cx, int cy);
 
+    // Sprache: "de" ist die Sprache des Quelltextes, "en" kommt aus lang/en.json.
+    void SwitchLanguage(const std::wstring& code);
+    std::wstring language = L"de";
+
     // Eingaben
     void OnListNotify(LPNMHDR nmh, LRESULT& res);
     void OnCommand(int id, int code);
@@ -136,8 +140,8 @@ public:
     void Quit();
     void ShowMenu();
     void RefreshMenu(HMENU bar);
-    void ShowAbout();
-    void ShowShortcutHelp();
+    void ShowAbout(bool show = true);
+    void ShowShortcutHelp(bool show = true);
     bool HasSelection() const;
 
     // Autostart, Standardweg für Programme ohne eigene Zuordnung, globale Tastenkürzel.

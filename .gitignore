@@ -1,5 +1,8 @@
 # Bau- und Laufzeitergebnisse
 build/
+*.log
+language.vorlage.json
+language.*.json
 _fertig/
 *.obj
 *.exe

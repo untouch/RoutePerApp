@@ -32,6 +32,16 @@ std::vector<std::wstring> Available();
 // in einem Vorrat, die Adresse bleibt also gueltig, auch nach einem Sprachwechsel.
 const wchar_t* T(const wchar_t* source);
 
+// Uebersetzten Text mit Werten fuellen. Die Vorlage enthaelt %d oder %s; die Sprache
+// darf die Reihenfolge der Werte anpassen, weil jede Stelle ihre eigenen Angaben macht.
+std::wstring Fill(const wchar_t* key);
+std::wstring Fill(const wchar_t* key, const wchar_t* a);
+std::wstring Fill(const wchar_t* key, const wchar_t* a, const wchar_t* b);
+std::wstring Fill(const wchar_t* key, int n);
+std::wstring Fill(const wchar_t* key, int n, const wchar_t* a);
+std::wstring Fill(const wchar_t* key, const wchar_t* a, int n);
+std::wstring Fill(const wchar_t* key, int n, int m);
+
 // Texte, die in dieser Sitzung gebraucht, aber nicht uebersetzt wurden.
 std::vector<std::wstring> MissingKeys();
 size_t MissCount();

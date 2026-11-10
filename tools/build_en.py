@@ -1,0 +1,209 @@
+"""Schreibt lang/en.json aus der vom Selbsttest erzeugten Vorlage.
+
+Die Schluessel werden unveraendert aus language.vorlage.json uebernommen, damit
+der Schluessel mit dem Text im Programm identisch bleibt. Werte, die leer blei-
+den, fallen auf den deutschen Text zurueck (bewusst bei Adapter-Suchbegiffen).
+"""
+import io
+import json
+
+TEMPLATE = 'C:/ProgramData/RoutePerApp/language.vorlage.json'
+OUT = 'lang/en.json'
+
+# Technik: solche Texte werden mit Adapterbeschreibungen verglichen und duerfen
+# nie uebersetzt werden.
+NO_TRANSLATION = {
+    'hyper-v', 'wan miniport', 'data escort', 'personal area', 'zero tier',
+    'packet filter',
+}
+
+T = {
+    # Menuezeilen
+    'Neu laden\tF5': 'Reload\tF5',
+    'Laufende Programme neu binden': 'Rebind running programs',
+    'In die Taskleiste legen': 'Minimize to tray',
+    'Bei Windows-Anmeldung starten': 'Start at Windows sign-in',
+    'Beenden\tStrg+Q': 'Exit\tCtrl+Q',
+    'Datei': 'File',
+    'Rückgängig\tStrg+Z': 'Undo\tCtrl+Z',
+    'Zuordnung aufheben\tEntf': 'Remove assignment\tDel',
+    'Details\tEnter': 'Details\tEnter',
+    'Programmpfad kopieren': 'Copy program path',
+    'Suchfeld\tStrg+F': 'Search box\tCtrl+F',
+    'Bearbeiten': 'Edit',
+    'markierte Programme  →  WLAN': 'selected programs  →  Wi-Fi',
+    'markierte Programme  →  LAN': 'selected programs  →  Ethernet',
+    'markierte Programme  →  Standard': 'selected programs  →  Default',
+    'ohne eigene Zuordnung  →  WLAN': 'with no assignment of their own  →  Wi-Fi',
+    'ohne eigene Zuordnung  →  LAN': 'with no assignment of their own  →  Ethernet',
+    'ohne eigene Zuordnung  →  Windows-Standard': 'with no assignment of their own  →  Windows default',
+    'Weg': 'Route',
+    'Als Administrator neu starten': 'Restart as administrator',
+    'Globale Tastenkürzel benutzen': 'Use global hotkeys',
+    'Programm': 'Program',
+    'Tastenkürzel und Ablauf': 'Shortcuts and how it works',
+    'Über RoutePerApp': 'About RoutePerApp',
+    'Sprache': 'Language',
+    '?': '?',
+
+    # Fenster, Tabelle, Karten
+    'RoutePerApp  –  Internetweg pro Programm': 'RoutePerApp  –  one internet route per program',
+    'Regel "': 'Rule "',
+    'Kein WLAN-Adapter gefunden für ': 'No Wi-Fi adapter found for ',
+    'Programm oder Benutzer suchen': 'Search program or user',
+    'nur mit Verbindung': 'connected only',
+    'Neu laden (F5)': 'Reload (F5)',
+    'Adapter heute': 'Adapter today',
+    'WLAN': 'Wi-Fi',
+    'LAN': 'Ethernet',
+    'Standard': 'Default',
+    'Benutzer': 'User',
+    '  · ': '  · ',
+    'über ': 'via ',
+    '● WLAN': '● Wi-Fi',
+    'Adapter unklar': 'Adapter unclear',
+    'kein Verkehr': 'no traffic',
+    ' · Windows': ' · Windows',
+    ' – 5G-Mobilrouter': ' – 5G mobile router',
+    '   Gateway ': '   Gateway ',
+    '   Metrik ': '   Metric ',
+    ' zugeordnet': ' assigned',
+    ' mit Verkehr': ' with traffic',
+    ' – ': ' – ',
+    '0 B/s': '0 B/s',
+    '   ↑ ': '   ↑ ',
+    '↓ ': '↓ ',
+    ' – Fritzbox / Ethernet': ' – Fritzbox / Ethernet',
+    'Windows-Standard': 'Windows default',
+    'ohne Bindung – Windows entscheidet': 'no binding – Windows decides',
+    ' bewusst ohne Bindung': ' deliberately unbound',
+    ' ohne eigene Regel': ' with no rule of their own',
+    'hierher ziehen – Zuordnung aufheben': 'drop here to remove the assignment',
+
+    # Taskleisten-Menue und Statuszeile
+    'Fenster holen': 'Show window',
+    'Programm aus der Liste auf WLAN, LAN oder Standard ziehen - neue Verbindungen laufen ab sofort darüber':
+        'Drag a program from the list onto Wi-Fi, Ethernet or Default - new connections use that route from then on',
+    '  –  ohne Administratorrechte: Zuordnung möglich, Bindung erst nach Neustart als Administrator':
+        '  –  running without administrator rights: assignment works, binding only after restarting as administrator',
+    '  –  ohne Administratorrechte: Zuordnung müglich, Bindung erst nach Neustart als Administrator':
+        '  –  running without administrator rights: assignment works, binding only after restarting as administrator',
+    'Strg+Z  rückgängig   •   F5  neu laden   •   Doppelklick  Details':
+        'Ctrl+Z  undo   •   F5  reload   •   double-click  details',
+    'RoutePerApp ': 'RoutePerApp ',
+    ' Selbsttest\r\n\r\n': ' self-test\r\n\r\n',
+    'ok      ': 'ok      ',
+    'Fenster steht und ist sichtbar': 'Window exists and is visible',
+    'Menueleiste vorhanden': 'Menu bar present',
+    'Datei: Autostart-Punkt vorhanden': 'File: autostart entry present',
+    'Weg: Standardweg-Punkte vorhanden': 'Route: default route entries present',
+    'Programm: Tastenkuerzel-Punkt vorhanden': 'Program: hotkey entry present',
+    'Systemmenue vorhanden': 'System menu present',
+    'Strg+Alt+W ist angemeldet': 'Ctrl+Alt+W is registered',
+    'Fenster ist geschlossen, aber RoutePerApp läuft weiter und hält die Zuordnungen. Beenden geht über das Symbol in der Taskleiste oder über Datei → Beenden.':
+        'The window is closed, but RoutePerApp keeps running and holds the assignments. To exit, use the tray icon or File → Exit.',
+    'Fenster ist nach dem Schliessen versteckt': 'Window is hidden after closing',
+    'Symbol in der Taskleiste angelegt': 'Tray icon created',
+    'RoutePerApp öffnen': 'Open RoutePerApp',
+    'Neu laden': 'Reload',
+    'Standardweg (ohne eigene Zuordnung)': 'Default route (no assignment of their own)',
+    'Beenden  (Routing abschalten)': 'Exit  (stop routing)',
+    'Beenden': 'Exit',
+    'Taskleisten-Menue mit Beenden-Punkt': 'Tray menu with exit entry',
+    'Klick aufs Symbol holt das Fenster zurueck': 'Clicking the tray icon brings the window back',
+    'Symbol wird nach Taskleisten-Neustart neu angelegt': 'Tray icon is recreated after the tray restarts',
+    'Vorlage fuer fehlende Uebersetzungen geschrieben': 'Template for missing translations written',
+
+    # Tastenkuerzel-Dialog
+    'In der Liste: ein Programm markieren, dann auf eine Karte oder in eine Spalte ziehen.\r\n\r\n':
+        'In the list: select a program, then drag it onto a card or into a column.\r\n\r\n',
+    'F5            neu laden\r\n': 'F5            reload\r\n',
+    'Strg+F        Suchfeld\r\n': 'Ctrl+F        search box\r\n',
+    'Enter         Details des markierten Programms\r\n': 'Enter         details of the selected program\r\n',
+    'Entf          Zuordnung aufheben\r\n': 'Del           remove the assignment\r\n',
+    'Strg+Z        letzte Zuordnung rückgängig\r\n': 'Ctrl+Z        undo the last assignment\r\n',
+    'Strg+Q        RoutePerApp beenden\r\n': 'Ctrl+Q        exit RoutePerApp\r\n',
+    'Fenster zu    RoutePerApp läuft im Hintergrund weiter\r\n\r\n':
+        'Close window  RoutePerApp keeps running in the background\r\n\r\n',
+    'Globale Kürzel (gelten auch bei verstecktem Fenster):\r\n':
+        'Global hotkeys (they work even while the window is hidden):\r\n',
+    'Strg+Alt+W    Vordergrundprogramm  ->  WLAN\r\n': 'Ctrl+Alt+W    foreground program  ->  Wi-Fi\r\n',
+    'Strg+Alt+L    Vordergrundprogramm  ->  LAN\r\n': 'Ctrl+Alt+L    foreground program  ->  Ethernet\r\n',
+    'Strg+Alt+S    Vordergrundprogramm  ->  Windows-Standard\r\n':
+        'Ctrl+Alt+S    foreground program  ->  Windows default\r\n',
+    'Strg+Alt+H    RoutePerApp-Fenster holen\r\n': 'Ctrl+Alt+H    show the RoutePerApp window\r\n',
+    'Abzuschalten über Programm  ->  Globale Tastenkürzel benutzen.\r\n':
+        'Switch them off under Program  ->  Use global hotkeys.\r\n',
+    ')\r\n\r\n': ')\r\n\r\n',
+
+    # Ueber-Dialog
+    'RoutePerApp  –  Internetweg pro Programm  (Fassung ': 'RoutePerApp  –  one internet route per program  (version ',
+    'Jedes Programm läuft über die Netzwerkkarte, die du ihm gibst: WLAN, LAN oder die\r\n':
+        'Every program runs over the network card you give it: Wi-Fi, Ethernet or the\r\n',
+    'ganz normale Windows-Routenwahl. Zugewiesen wird per Drag & Drop auf eine Karte.\r\n\r\n':
+        'ordinary Windows route choice. Assignments are made by dragging onto a card.\r\n\r\n',
+    'Das Programm bleibt nach dem Schließen des Fensters im Hintergrund laufen, sonst\r\n':
+        'The program keeps running in the background after you close the window, otherwise\r\n',
+    'greifen die Zuordnungen nicht für Programme, die später gestartet werden.\r\n':
+        'the assignments would not apply to programs started later.\r\n',
+    'Beenden: Symbol in der Taskleiste  →  Beenden, oder Datei  →  Beenden.\r\n\r\n':
+        'To exit: tray icon  →  Exit, or File  →  Exit.\r\n\r\n',
+    'läuft ohne Administratorrechte  –  Programme anderer Benutzer und Dienste\r\nkönnen nicht umgebogen werden (Programm  →  Als Administrator neu starten)':
+        'running without administrator rights  –  programs of other users and services\r\ncannot be redirected (Program  →  Restart as administrator)',
+
+    # Selbsttest-Meldungen
+    'Sprache Englisch: Menues neu gebaut': 'English language: menus rebuilt',
+    'Sprache Englisch: Datei-Menue uebersetzt': 'English language: File menu translated',
+    'Sprache Englisch: Fenstertitel uebersetzt': 'English language: window title translated',
+    'Sprache Englisch: Knopfueberschrift uebersetzt': 'English language: button caption translated',
+    'Sprache Englisch: Spaltenkopf uebersetzt': 'English language: column header translated',
+    'Sprache Englisch: keine Beschriftung ohne Uebersetzung': 'English language: no label left untranslated',
+}
+
+raw = io.open(TEMPLATE, encoding='utf-8-sig').read()
+data = json.loads(raw)
+keys = [k for k in data if not k.startswith('_')]
+
+out = {}
+out['_Hinweis'] = ('Schluessel = Text im Programm, Wert = Uebersetzung. Leere Werte bedeuten: '
+                   'es wird der deutsche Text benutzt. Diese Datei als language.en.json in das '
+                   'Datenverzeichnis legen und RoutePerApp neu starten.')
+out['_Sprache'] = 'en'
+
+missing = []
+for key in keys:
+    if key in NO_TRANSLATION:
+        continue
+    if key in T:
+        out[key] = T[key]
+    else:
+        out[key] = ''
+        missing.append(key)
+
+extra = [k for k in T if k not in keys]
+for key in extra:
+    if key in NO_TRANSLATION:
+        continue
+    out[key] = T[key]
+
+out['_Anzahl'] = len(keys)
+
+body = json.dumps(out, ensure_ascii=False, indent=2)
+io.open(OUT, 'w', encoding='utf-8', newline='\n').write(body + '\n')
+
+print('keys in template: %d' % len(keys))
+print('written entries:  %d' % len([k for k in out if not k.startswith('_')]))
+print('still empty:      %d' % len(missing))
+for key in missing:
+    print('EMPTY ' + repr(key))
+print('extra (not in template): %d' % len(extra))
+for key in extra:
+    print('EXTRA ' + repr(key))
+
+# Selbstkontrolle: Datei muss lesbar sein und jeder nicht technische Schluessel
+# einen Wert haben.
+back = json.loads(io.open(OUT, encoding='utf-8').read())
+bad = [k for k in back if not k.startswith('_') and not back[k] and k not in NO_TRANSLATION]
+print('check empty after reload: %d' % len(bad))
+for key in bad:
+    print('BAD ' + repr(key))
