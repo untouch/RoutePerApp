@@ -27,18 +27,29 @@ is in the manifest (`requireAdministrator`) and visible in the file properties.
 ## Trust boundary of the shared folder
 
 The engine, the injected helper and the interface exchange state through plain files in
-`C:\ProgramData\RoutePerApp` - the rules, the resolved rules and both helper DLLs. This is the
-weakest part of the design, and it is worth understanding:
+`C:\ProgramData\RoutePerApp`: the rules, the resolved rules, and the helper DLLs in the
+subfolder `hooks`.
 
-- The interface replaces the helper copies from the folder of `routeperapp.exe` when they differ,
-  so a swapped file does not stay for long.
-- The folder is nevertheless writable by ordinary users today, and the elevated program injects
-  from it. A standard user who can write there can therefore get their own DLL loaded into
-  processes belonging to other users. That is a local privilege escalation path, and closing it is
-  the next planned change: restrict write access when the folder is created, and compare the
-  helper file against the copy next to the executable before injecting.
-- Until then: do not put the files in a folder that other users can write, and do not leave
-  non-administrator accounts on a machine where elevated RoutePerApp runs.
+The helper DLLs are the dangerous files, because an elevated RoutePerApp loads them into processes
+that belong to other users. They are protected in three steps:
+
+- The only trusted copy is the one next to `routeperapp.exe`, and that folder is written by an
+  administrator when the program is installed. Nothing is injected from anywhere else.
+- RoutePerApp copies both DLLs into `C:\ProgramData\RoutePerApp\hooks` and compares the SHA-256
+  of the copy with the original. Injection is refused when a file is missing or the hashes
+  differ, and the status line plus the log name the file.
+- On that same step the `hooks` folder gets its own access list: system and administrators may
+  write, ordinary users may only read and execute. Inherited write access from the parent folder
+  is dropped, for the folder and for the files inside it. Helper files that lay directly in the
+  data folder (up to version 1.1) are deleted, because any local account could have replaced them.
+
+Check it yourself: `icacls C:\ProgramData\RoutePerApp\hooks` must show no write permission for
+ordinary users. When RoutePerApp cannot set that list, it says so in the status line instead of
+pretending the folder is safe.
+
+Still open: the rule files in the data folder stay writable by ordinary users, since the program
+writes them while running elevated. Writing rules can only move traffic between adapters on that
+machine - it cannot load code. Do not share the folder with accounts you do not trust anyway.
 
 ## What the program is not
 

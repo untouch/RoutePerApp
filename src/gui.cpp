@@ -585,47 +585,13 @@ void App::RebuildFontsAndImages() {
     InvalidateRect(hwnd, nullptr, TRUE);
 }
 
-// Unterscheidet sich eine gebaute Hook-Bibliothek von der im Datenordner? Ohne diesen
-// Vergleich bliebe die alte Bibliothek für immer im Einsatz, obwohl gerade eine neue
-// gebaut wurde.
-static bool HookFilesDiffer(const std::wstring& src, const std::wstring& dst) {
-    WIN32_FILE_ATTRIBUTE_DATA a = {};
-    WIN32_FILE_ATTRIBUTE_DATA b = {};
-    if (!GetFileAttributesExW(src.c_str(), GetFileExInfoStandard, &a)) return false;
-    if (!GetFileAttributesExW(dst.c_str(), GetFileExInfoStandard, &b)) return true;   // Ziel fehlt
-    if (a.nFileSizeHigh != b.nFileSizeHigh || a.nFileSizeLow != b.nFileSizeLow) return true;
-    return CompareFileTime(&a.ftLastWriteTime, &b.ftLastWriteTime) > 0;
-}
-
+// Die Hook-Bibliotheken liegen in einem eigenen Unterordner des Datenordners. Vor jeder
+// Anbindung vergleicht der Kern sie mit den Exemplaren neben der Programmdatei. Hier läuft
+// das schon beim Start, damit eine neue Fassung auch in der Laufzeitumgebung ankommt.
 void App::EnsureHookCopies() {
-    wchar_t modBuf[MAX_PATH * 4];
-    const DWORD n = GetModuleFileNameW(nullptr, modBuf, ARRAYSIZE(modBuf));
-    if (n == 0 || n >= ARRAYSIZE(modBuf)) return;
-    std::wstring dir(modBuf, n);
-    const size_t slash = dir.find_last_of(L'\\');
-    if (slash == std::wstring::npos) return;
-    dir = dir.substr(0, slash);
-
     std::wstring err;
-    EnsureDir(engine.paths.dir, err);
-
-    const wchar_t* names[] = { L"hook.dll", L"hook32.dll" };
-    for (int i = 0; i < 2; ++i) {
-        const std::wstring src = dir + L"\\" + names[i];
-        const std::wstring dst = (i == 0) ? engine.paths.hookDll : engine.paths.hookDll32;
-        if (!FileExists(src)) continue;
-        if (FileExists(dst) && !HookFilesDiffer(src, dst)) continue;
-        if (CopyFileW(src.c_str(), dst.c_str(), FALSE)) continue;
-        const DWORD code = GetLastError();
-        // Eine geladene Bibliothek ist gesperrt: dann hilft nur Beenden und Neustart.
-        std::wstring why = (code == ERROR_SHARING_VIOLATION || code == ERROR_ACCESS_DENIED)
-            ? Tr(L" - die alte Bibliothek wird noch von gebundenen Programmen benutzt, RoutePerApp beenden und diese Programme neu starten")
-            : LastErrText(code);
-        engine.problems.push_back(std::wstring(names[i]) + Tr(L" konnte nicht erneuert werden: ") + why);
-    }
-    if (!FileExists(engine.paths.hookDll) || !FileExists(engine.paths.hookDll32)) {
-        engine.problems.push_back(Tr(L"Hook-Bibliothek fehlt: Zuordnungen werden gespeichert, aber laufende Programme erst beim n\u00E4chsten Start angebunden"));
-    }
+    if (!engine.VerifyHooks(CurrentExeDir(), err) && !err.empty())
+        engine.problems.push_back(err);
     engine.Publish();
 }
 
@@ -1633,6 +1599,18 @@ int App::SelfTest() {
     check(Tr(L"Symbol wird nach Taskleisten-Neustart neu angelegt"), ShowTray());
     HideTray();
 
+    // Sicherheit: angebunden wird nur, wenn die Hook-Bibliotheken unveraendert
+    // neben dem Programm liegen. Ohne Vorlage darf nichts in ein Programm gehen.
+    {
+        std::wstring grund;
+        const bool falsch = engine.VerifyHooks(L"C:\\RoutePerApp-gibt-es-nicht", grund);
+        check(Tr(L"Hooks: ohne Vorlage wird nichts angebunden"), !falsch && !grund.empty());
+        check(Tr(L"Hooks: Vorlagen neben dem Programm sind unveraendert"),
+              engine.VerifyHooks(CurrentExeDir(), grund));
+        check(Tr(L"Hooks: Ordner ist gegen normale Benutzer geschlossen"),
+              !elevated || FolderIsHardened(engine.paths.hookDir));
+    }
+
     // Sprache: das Umschalten muss bis in die Menues wirken, und keine sichtbare
     // Beschriftung darf ohne Uebersetzung zurueckbleiben. Fehlende Texte werden
     // aufgeschrieben, damit die Sprachdatei sie ergaenzen kann.
@@ -1665,8 +1643,16 @@ int App::SelfTest() {
     if (list) SendMessageW(list, LVM_GETCOLUMNW, 2, reinterpret_cast<LPARAM>(&lc));
     check(Tr(L"Sprache Englisch: Spaltenkopf uebersetzt"),
           std::wstring(spalte) == Tr(L"Adapter heute"));
-    const size_t missing = lang::MissCount();
-    if (missing) {
+    // Die Meldung des Hook-Schutzes erscheint sonst nur im Fehlerfall. Sie wird
+    // hier absichtlich erzeugt, damit die Sprachdatei sie ebenfalls abdecken muss.
+    {
+        std::wstring grund;
+        engine.VerifyHooks(L"C:\\RoutePerApp-gibt-es-nicht", grund);
+        engine.VerifyHooks(CurrentExeDir(), grund);   // danach wieder der echte Zustand
+    }
+
+    const std::vector<std::wstring> offen = lang::Untranslated();
+    if (!offen.empty()) {
         std::wstring perr;
         bool geschrieben = lang::WriteTemplate(engine.paths.dir + L"\\language.vorlage.json", &perr);
         if (!geschrieben) {
@@ -1679,10 +1665,10 @@ int App::SelfTest() {
             }
         }
         if (geschrieben) out += Tr(L"Vorlage fuer fehlende Uebersetzungen geschrieben\r\n");
-        for (const std::wstring& key : lang::MissingKeys())
+        for (const std::wstring& key : offen)
             out += Tr(L"fehlt: ") + key + L"\r\n";
     }
-    check(Tr(L"Sprache Englisch: keine Beschriftung ohne Uebersetzung"), missing == 0);
+    check(Tr(L"Sprache Englisch: keine Beschriftung ohne Uebersetzung"), offen.empty());
     SwitchLanguage(L"de");
     HMENU barDe = GetMenu(hwnd);
     check(Tr(L"Sprache Deutsch: wiederhergestellt"),

@@ -47,6 +47,10 @@ std::vector<std::wstring> MissingKeys();
 size_t MissCount();
 void ForgetMissing();
 
+// Alle gebrauchten Texte ohne brauchbare Uebersetzung, unabhaengig davon, in
+// welcher Sprache sie gebraucht wurden. Leere Werte zaehlen ebenfalls nicht.
+std::vector<std::wstring> Untranslated();
+
 // Schreiben aller gesammelten Texte als vorlage (Schluessel = Quelltext, Wert = "" oder
 // bisheriger Wert), damit Uebersetzungen ausserhalb bearbeitet werden koennen.
 bool WriteTemplate(const std::wstring& path, std::wstring* problem);

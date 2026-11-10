@@ -3,6 +3,45 @@
 The version number lives in `src\resource.hpp`; the file properties, the title bar and the About
 dialog all read it from there.
 
+## 1.2 - 2026-11-10
+
+### Injection only with the program's own helper files
+
+The helper DLL used to sit in `C:\ProgramData\RoutePerApp`, a folder that ordinary users can write
+on a default Windows. Whoever could write there could get their own DLL loaded by the elevated
+program into processes of other users. That path is closed:
+
+- The helper files now live in `C:\ProgramData\RoutePerApp\hooks`, and that folder gets its own
+  access list when RoutePerApp sets it up: system and administrators may write, ordinary users may
+  only read and execute. Write access inherited from the parent folder is dropped for the folder
+  and for the files inside it.
+- Before anything is injected, both helper files are compared by SHA-256 with the copies next to
+  `routeperapp.exe`. A missing or different file means no injection, and the status line and the
+  log say which file it was.
+- Helper files left directly in the data folder are deleted, since any local account could have
+  replaced them. `icacls C:\ProgramData\RoutePerApp\hooks` shows the result.
+
+### Changed behaviour
+
+- `hook.dll` and `hook32.dll` are looked for in the `hooks` subfolder, no longer directly in
+  `C:\ProgramData\RoutePerApp`. The program migrates this itself on start.
+
+### Fixed
+
+- The write time of `resolved.json` now always moves forward. Two saves could land on the same
+  time mark, and an injected program decides by that mark whether to read the decisions again -
+  so a fresh rule could stay unnoticed. This also removed the last flaky test failure.
+- The self-test now demands a translation for every text the program has used, not only for those
+  it happens to meet while the English interface is open. Texts that only appear in a fault case
+  (missing helper, folder left open) are covered too.
+
+### Tests
+
+- 37 new checks: hash comparison, the copy from the program folder, the closed folder, a replaced
+  file, injection refused without a trusted file, and the interface wording for those cases.
+- Totals: 401 core, 130 interface, 89 integration checks, no failures. Self-test passes in German
+  and in English.
+
 ## 1.1 - 2026-11-10
 
 ### Interface in two languages

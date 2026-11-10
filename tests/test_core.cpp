@@ -1071,6 +1071,140 @@ static void TestLanguageLayer() {
     EndSection();
 }
 
+// ---------------------------------------------------------------- Sicherheit an den Hook-Dateien
+
+static bool WriteBytes(const std::wstring& file, const char* text) {
+    const HANDLE h = CreateFileW(file.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                 FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    const DWORD len = (DWORD)lstrlenA(text);
+    DWORD geschrieben = 0;
+    const bool ok = WriteFile(h, text, len, &geschrieben, nullptr) && geschrieben == len;
+    CloseHandle(h);
+    return ok;
+}
+
+// Leere Zugriffsliste heisst "jeder darf alles" - noetig, um einen gehaerteten Testordner
+// nach dem Pruefen wieder loeschen zu koennen.
+static void LockereRechte(const std::wstring& dir) {
+    SetNamedSecurityInfoW(const_cast<LPWSTR>(dir.c_str()), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
+                          nullptr, nullptr, nullptr, nullptr);
+    WIN32_FIND_DATAW f{};
+    const HANDLE suche = FindFirstFileW((dir + L"\\*").c_str(), &f);
+    if (suche == INVALID_HANDLE_VALUE) return;
+    do {
+        if (f.cFileName == std::wstring(L".") || f.cFileName == std::wstring(L"..")) continue;
+        const std::wstring voll = dir + L"\\" + f.cFileName;
+        if (f.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) LockereRechte(voll);
+        SetNamedSecurityInfoW(const_cast<LPWSTR>(voll.c_str()), SE_FILE_OBJECT,
+                              DACL_SECURITY_INFORMATION, nullptr, nullptr, nullptr, nullptr);
+        DeleteFileW(voll.c_str());
+    } while (FindNextFileW(suche, &f));
+    FindClose(suche);
+}
+
+// Entfernt Testordner wieder, damit die Testordner nicht in den Tempordner gehören.
+static void LoeschRekursiv(const std::wstring& dir) {
+    WIN32_FIND_DATAW f{};
+    const HANDLE suche = FindFirstFileW((dir + L"\\*").c_str(), &f);
+    if (suche == INVALID_HANDLE_VALUE) return;
+    do {
+        if (f.cFileName == std::wstring(L".") || f.cFileName == std::wstring(L"..")) continue;
+        const std::wstring voll = dir + L"\\" + f.cFileName;
+        if (f.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            LoeschRekursiv(voll);
+            RemoveDirectoryW(voll.c_str());
+        } else {
+            DeleteFileW(voll.c_str());
+        }
+    } while (FindNextFileW(suche, &f));
+    FindClose(suche);
+}
+
+static void TestHookGuard() {
+    Begin(L"Sicherheit: Hook-Ordner, Hash und Vertrauenspr\u00FCfung");
+
+    const std::wstring grund = TempDir() + L"\\sicherheit";
+    std::wstring err;
+    CHECK(EnsureDir(grund, err));
+
+    const std::wstring a = grund + L"\\a.bin", b = grund + L"\\b.bin";
+    CHECK(WriteBytes(a, "abc"));
+    CHECK(WriteBytes(b, "abd"));
+    std::wstring hexA, hexA2, hexB, fehler, weg;
+    CHECK_MSG(HashFile(a, hexA, fehler), fehler.c_str());
+    CHECK_MSG(HashFile(a, hexA2, fehler), fehler.c_str());
+    CHECK_MSG(HashFile(b, hexB, fehler), fehler.c_str());
+    CHECK_EQ_STR(hexA, hexA2);
+    CHECK(hexA != hexB);
+    CHECK_EQ_INT((int)hexA.size(), 64);
+    // Der Hashwert fuer "abc" ist festgelegt; eine kaputte Hashbildung faellt hier auf.
+    CHECK_EQ_STR(hexA, L"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    CHECK(!HashFile(grund + L"\\fehlt.bin", weg, fehler));
+
+    // Ordnerschutz in einem eigenen Ordner: nach dem Haerten darf hier niemand mehr
+    // etwas anlegen, deshalb passiert das vor den uebrigen Pruefungen.
+    const std::wstring fest = grund + L"\\haertung";
+    CHECK(EnsureDir(fest, err));
+    CHECK(WriteBytes(fest + L"\\probe.txt", "probe"));
+    CHECK(!FolderIsHardened(fest));
+    CHECK_MSG(HardenFolder(fest, err), err.c_str());
+    CHECK(FolderIsHardened(fest));
+    // Ein normales Programm kann die Datei nicht mehr ersetzen. Mit Administratorrechten
+    // im Testlauf waere das Schreiben erlaubt, dann entfaellt diese Erwartung.
+    bool erhoeht = false;
+    IsProcessElevatedSelf(erhoeht, err);
+    const HANDLE versuch = CreateFileW((fest + L"\\neu.txt").c_str(), GENERIC_WRITE, 0, nullptr,
+                                       CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    const bool schreibenMoeglich = (versuch != INVALID_HANDLE_VALUE);
+    if (schreibenMoeglich) CloseHandle(versuch);
+    if (!erhoeht) CHECK_MSG(!schreibenMoeglich, L"normales Programm darf im geschuetzten Ordner schreiben");
+
+    const std::wstring vorlage = grund + L"\\vorlage";
+    const Paths daten = MakePaths(grund + L"\\daten");
+    CHECK_EQ_STR(daten.hookDir, daten.dir + L"\\hooks");
+    CHECK(EnsureDir(vorlage, err));
+    CHECK(WriteBytes(vorlage + L"\\hook.dll", "sechsundvierzig"));
+    CHECK(WriteBytes(vorlage + L"\\hook32.dll", "dreiunddreissig"));
+
+    Engine e(daten);
+    std::wstring warum;
+    CHECK_MSG(e.VerifyHooks(vorlage, warum), warum.c_str());
+    CHECK(e.HooksTrusted());
+    CHECK(FileExists(daten.hookDll));
+    CHECK(FileExists(daten.hookDll32));
+
+    // Fremder Inhalt im Datenordner wird ersetzt, nicht benutzt.
+    CHECK(WriteBytes(daten.hookDll, "geaendert"));
+    CHECK_MSG(e.VerifyHooks(vorlage, warum), warum.c_str());
+    std::wstring hex1, hex2;
+    CHECK(HashFile(daten.hookDll, hex1, fehler));
+    CHECK(HashFile(vorlage + L"\\hook.dll", hex2, fehler));
+    CHECK_EQ_STR(hex1, hex2);
+
+    // Ohne die Datei neben der Programmdatei wird nichts angebunden.
+    CHECK(!e.VerifyHooks(grund + L"\\feHLT", warum));
+    CHECK(!e.HooksTrusted());
+    CHECK_MSG(!warum.empty(), L"ohne Vorlage bleibt die Begr\u00FCndung leer");
+
+    // Die alte Ablage direkt im Datenordner verschwindet.
+    const std::wstring alt = daten.dir + L"\\hook.dll";
+    CHECK(WriteBytes(alt, "alt"));
+    CHECK_MSG(e.VerifyHooks(vorlage, warum), warum.c_str());
+    CHECK(!FileExists(alt));
+
+    // Rechte allein reichen nicht: ohne gepruefte Bibliothek bleibt jede Anbindung aus.
+    Engine v(daten);
+    v.elevated = true;
+    int schon = 0, fehl = 0;
+    CHECK_EQ_INT(v.ReinjectMatching(warum, schon, fehl), 0);
+
+    LockereRechte(grund);
+    LoeschRekursiv(grund);
+    RemoveDirectoryW(grund.c_str());
+    EndSection();
+}
+
 // ----------------------------------------------------------------Haupt
 
 int main() {
@@ -1103,6 +1237,7 @@ int main() {
     TestLiveProcessesAndTcp();
     TestResolvedFileRoundtrip();
     TestLanguageLayer();
+    TestHookGuard();
 
     wprintf(L"\n=========================================\n");
     wprintf(L"Prüfungen: %d   Fehler: %d\n", g_checks, g_failed);

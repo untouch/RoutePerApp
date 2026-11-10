@@ -305,8 +305,9 @@ static void TestCoreAdditions() {
     Begin(L"Kern: 32-Bit-Hook und Injektionszähler");
 
     const Paths p = MakePaths(L"C:\\data");
-    CHECK_EQ_STR(p.hookDll, L"C:\\data\\hook.dll");
-    CHECK_EQ_STR(p.hookDll32, L"C:\\data\\hook32.dll");
+    CHECK_EQ_STR(p.hookDir, L"C:\\data\\hooks");
+    CHECK_EQ_STR(p.hookDll, L"C:\\data\\hooks\\hook.dll");
+    CHECK_EQ_STR(p.hookDll32, L"C:\\data\\hooks\\hook32.dll");
 
     ProcInfo pr;
     pr.pid = 4242;

@@ -111,6 +111,7 @@ echo Fertig.
 if not "%MODE%"=="tests" (
   echo   Programm: %~dp0build\routeperapp.exe
   echo   Hooks:    %~dp0build\hook.dll   und   %~dp0build\hook32.dll
-  echo   Beide Hooks neben routeperapp.exe legen - das Programm kopiert sie nach C:\ProgramData\RoutePerApp.
+  echo   Beide Hooks neben routeperapp.exe legen - das Programm prueft sie und legt sie im
+  echo   geschuetzten Unterordner hooks seiner Datenablage ab.
 )
 exit /b 0

@@ -27,6 +27,15 @@ number of failed points as exit code. It runs without administrator rights throu
 binary; a non-elevated helper cannot drive the elevated program, because Windows blocks the
 messages.
 
+### Helper files and the protected folder
+
+The helper DLLs are taken from the folder of `routeperapp.exe`, copied into
+`C:\ProgramData\RoutePerApp\hooks`, and compared by SHA-256 before anything is injected. That
+subfolder gets its own access list on the way: administrators write, everyone else reads. The tests
+work in a temporary folder of their own and never touch the live one, so a test run cannot leave a
+half-protected folder behind. `TestHookGuard` in `tests\test_core.cpp` covers the folder, the hash
+comparison and the refusal to inject.
+
 ## Conventions
 
 - C++17, MSVC, no third-party libraries and nothing fetched at build time. The JSON layer in

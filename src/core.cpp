@@ -16,6 +16,10 @@
 #include <memory>
 #include <set>
 
+#include <aclapi.h>
+#include <accctrl.h>
+#include <wincrypt.h>
+
 #pragma comment(lib, "iphlpapi.lib")
 #pragma comment(lib, "psapi.lib")
 #pragma comment(lib, "advapi32.lib")
@@ -427,7 +431,7 @@ static void AdoptOldDataDir(const wchar_t* base) {
     if (GetFileAttributesW(old.c_str()) == INVALID_FILE_ATTRIBUTES) return;
     if (!CreateDirectoryW(now.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) return;
     static const wchar_t* names[] = { L"rules.json", L"rules.json.bak", L"resolved.json",
-                                      L"resolved.json.bak", L"hook.dll", L"hook32.dll", L"settings.json" };
+                                      L"resolved.json.bak", L"settings.json" };
     for (auto name : names) {
         const std::wstring from = old + L"\\" + name, to = now + L"\\" + name;
         if (GetFileAttributesW(from.c_str()) != INVALID_FILE_ATTRIBUTES &&
@@ -451,8 +455,9 @@ Paths MakePaths(const std::wstring& dir) {
     p.dir = dir;
     p.rulesFile = dir + L"\\rules.json";
     p.resolvedFile = dir + L"\\resolved.json";
-    p.hookDll = dir + L"\\hook.dll";
-    p.hookDll32 = dir + L"\\hook32.dll";
+    p.hookDir = dir + L"\\hooks";      // eigener Ordner, nur mit Administratorrechten aenderbar
+    p.hookDll = p.hookDir + L"\\hook.dll";
+    p.hookDll32 = p.hookDir + L"\\hook32.dll";
     p.logFile = dir + L"\\routeperapp.log";
     return p;
 }
@@ -475,6 +480,183 @@ bool EnsureDir(const std::wstring& dir, std::wstring& err) {
 bool FileExists(const std::wstring& file) {
     DWORD a = GetFileAttributesW(file.c_str());
     return a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+// ---------------------------------------------------------------- Hook-Dateien absichern
+
+std::wstring CurrentExeDir() {
+    wchar_t puffer[MAX_PATH * 4];
+    const DWORD n = GetModuleFileNameW(nullptr, puffer, ARRAYSIZE(puffer));
+    if (n == 0 || n >= ARRAYSIZE(puffer)) return std::wstring();
+    std::wstring voll(puffer, n);
+    const size_t slash = voll.find_last_of(L'\\');
+    if (slash == std::wstring::npos) return std::wstring();
+    return voll.substr(0, slash);
+}
+
+static wchar_t HexZiffer(int wert) { return wert < 10 ? wchar_t(L'0' + wert) : wchar_t(L'a' + wert - 10); }
+
+// SHA-256 einer Datei als Hex-Kette. Der Vergleich zeigt, ob eine Hook-Bibliothek noch die
+// ist, die mit dem Programm ausgeliefert wurde.
+bool HashFile(const std::wstring& file, std::wstring& hex, std::wstring& err) {
+    hex.clear();
+    const HANDLE h = CreateFileW(file.c_str(), GENERIC_READ,
+                                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                 nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) { err = LastErrText(GetLastError()); return false; }
+
+    HCRYPTPROV anbieter = 0;
+    HCRYPTHASH hash = 0;
+    bool ok = false;
+    if (CryptAcquireContextW(&anbieter, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) {
+        if (CryptCreateHash(anbieter, CALG_SHA_256, 0, 0, &hash)) {
+            ok = true;
+            std::vector<char> block(64 * 1024);
+            for (;;) {
+                DWORD gelesener = 0;
+                if (!ReadFile(h, block.data(), DWORD(block.size()), &gelesener, nullptr)) { ok = false; break; }
+                if (gelesener == 0) break;
+                if (!CryptHashData(hash, reinterpret_cast<const BYTE*>(block.data()), gelesener, 0)) { ok = false; break; }
+            }
+            if (ok) {
+                BYTE wert[32];
+                DWORD laenge = sizeof(wert);
+                if (CryptGetHashParam(hash, HP_HASHVAL, wert, &laenge, 0)) {
+                    std::wstring kette;
+                    for (DWORD i = 0; i < laenge; ++i) {
+                        kette += HexZiffer(wert[i] >> 4);
+                        kette += HexZiffer(wert[i] & 15);
+                    }
+                    hex = kette;
+                } else {
+                    ok = false;
+                }
+            }
+        }
+        CryptDestroyHash(hash);
+        CryptReleaseContext(anbieter, 0);
+    }
+    CloseHandle(h);
+    if (!ok && err.empty()) err = Tr(L"Hashbildung fehlgeschlagen");
+    return ok;
+}
+
+// Ein Ordner, in dem normale Programme nur lesen und ausfuehren duerfen. Die Dateien darin
+// werden von einem Programm mit Administratorrechten benutzt und in andere Programme
+// eingeschleust; ein gewoehnlicher Programmablauf darf sie nicht austauschen.
+//
+// Bewusst fehlt ein Eintrag fuer den Erzeuger: der Mensch anmeldet sich mit einem Konto, das
+// zur Gruppe Administratoren gehoert. Sein normales Programm laeuft ohne erhohte Rechte und
+// darf deshalb hier nicht schreiben duerfen, obwohl derselbe Mensch es duerfte.
+bool HardenFolder(const std::wstring& dir, std::wstring& err) {
+    PSID systemSid = nullptr, adminSid = nullptr, benutzerSid = nullptr;
+    SID_IDENTIFIER_AUTHORITY nt = SECURITY_NT_AUTHORITY;
+    const bool sidOk =
+        AllocateAndInitializeSid(&nt, 1, SECURITY_LOCAL_SYSTEM_RID, 0, 0, 0, 0, 0, 0, 0, &systemSid) &&
+        AllocateAndInitializeSid(&nt, 2, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS,
+                                 0, 0, 0, 0, 0, 0, &adminSid) &&
+        AllocateAndInitializeSid(&nt, 2, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_USERS,
+                                 0, 0, 0, 0, 0, 0, &benutzerSid);
+    if (!sidOk) {
+        if (systemSid) FreeSid(systemSid);
+        if (adminSid) FreeSid(adminSid);
+        if (benutzerSid) FreeSid(benutzerSid);
+        err = Tr(L"Benutzerkennungen nicht vorbereitet: ") + LastErrText(GetLastError());
+        return false;
+    }
+
+    const ACCESS_MASK lesen = FILE_READ_DATA | FILE_READ_EA | FILE_READ_ATTRIBUTES |
+                              FILE_EXECUTE | SYNCHRONIZE | READ_CONTROL;
+    struct Vorgabe { PSID sid; ACCESS_MASK rechte; };
+    const Vorgabe vorgaben[3] = { { systemSid, FILE_ALL_ACCESS },
+                                  { adminSid, FILE_ALL_ACCESS },
+                                  { benutzerSid, lesen } };
+
+    EXPLICIT_ACCESSW zeilen[3]{};
+    int anzahl = 0;
+    for (const Vorgabe& v : vorgaben) {
+        EXPLICIT_ACCESSW& z = zeilen[anzahl++];
+        z.grfAccessPermissions = v.rechte;
+        z.grfAccessMode = GRANT_ACCESS;
+        z.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+        z.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+        z.Trustee.ptstrName = reinterpret_cast<LPWSTR>(v.sid);
+    }
+
+    PACL rechte = nullptr;
+    DWORD r = SetEntriesInAclW(anzahl, zeilen, nullptr, &rechte);
+    if (r != ERROR_SUCCESS) {
+        err = Tr(L"Zugriffsliste nicht gebaut: ") + LastErrText(r);
+        FreeSid(systemSid); FreeSid(adminSid); FreeSid(benutzerSid);
+        return false;
+    }
+
+    // Der Ordner erbt die Rechte aus den Programmdaten. Mit der geschuetzten Liste fallen
+    // diese geerbten Schreibrechte weg, nur die eigene Liste gilt.
+    r = SetNamedSecurityInfoW(const_cast<LPWSTR>(dir.c_str()), SE_FILE_OBJECT,
+                              DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                              nullptr, nullptr, rechte, nullptr);
+    bool ok = (r == ERROR_SUCCESS);
+    if (!ok) err = Tr(L"Ordnerschutz nicht gesetzt: ") + LastErrText(r);
+
+    // Vorhandene Dateien tragen noch die alte Liste, sie werden einzeln nachgezogen.
+    WIN32_FIND_DATAW f{};
+    const HANDLE suche = FindFirstFileW((dir + L"\\*").c_str(), &f);
+    if (suche != INVALID_HANDLE_VALUE) {
+        do {
+            if (f.cFileName == std::wstring(L".") || f.cFileName == std::wstring(L"..")) continue;
+            if (f.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            const std::wstring voll = dir + L"\\" + f.cFileName;
+            if (SetNamedSecurityInfoW(const_cast<LPWSTR>(voll.c_str()), SE_FILE_OBJECT,
+                                      DACL_SECURITY_INFORMATION, nullptr, nullptr, rechte,
+                                      nullptr) != ERROR_SUCCESS)
+                ok = false;
+        } while (FindNextFileW(suche, &f));
+        FindClose(suche);
+    }
+
+    LocalFree(rechte);
+    FreeSid(systemSid); FreeSid(adminSid); FreeSid(benutzerSid);
+    return ok;
+}
+
+// Prueft, ob der Ordner fuer normale Programme keinen Schreibzugriff mehr enthaelt.
+bool FolderIsHardened(const std::wstring& dir) {
+    PSID systemSid = nullptr, adminSid = nullptr;
+    SID_IDENTIFIER_AUTHORITY nt = SECURITY_NT_AUTHORITY;
+    AllocateAndInitializeSid(&nt, 1, SECURITY_LOCAL_SYSTEM_RID, 0, 0, 0, 0, 0, 0, 0, &systemSid);
+    AllocateAndInitializeSid(&nt, 2, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS,
+                             0, 0, 0, 0, 0, 0, &adminSid);
+
+    PACL rechte = nullptr;
+    PSECURITY_DESCRIPTOR paket = nullptr;
+    const DWORD r = GetNamedSecurityInfoW(const_cast<LPWSTR>(dir.c_str()), SE_FILE_OBJECT,
+                                          DACL_SECURITY_INFORMATION, nullptr, nullptr, &rechte,
+                                          nullptr, &paket);
+    if (r != ERROR_SUCCESS) {
+        if (systemSid) FreeSid(systemSid);
+        if (adminSid) FreeSid(adminSid);
+        return false;
+    }
+    const ACCESS_MASK schreiben = FILE_ADD_FILE | FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES |
+                                  FILE_WRITE_EA | DELETE | FILE_ADD_SUBDIRECTORY;
+    bool offen = false;
+    if (rechte) {
+        for (unsigned i = 0; i < rechte->AceCount; ++i) {
+            ACCESS_ALLOWED_ACE* ace = nullptr;
+            if (!GetAce(rechte, i, reinterpret_cast<void**>(&ace)) || !ace) continue;
+            if (ace->Header.AceType != ACCESS_ALLOWED_ACE_TYPE) continue;
+            if ((ace->Mask & schreiben) == 0) continue;
+            PSID wer = reinterpret_cast<PSID>(&ace->SidStart);
+            if ((systemSid && EqualSid(wer, systemSid)) || (adminSid && EqualSid(wer, adminSid))) continue;
+            offen = true;
+            break;
+        }
+    }
+    LocalFree(paket);
+    if (systemSid) FreeSid(systemSid);
+    if (adminSid) FreeSid(adminSid);
+    return !offen;
 }
 
 bool ReadTextFile(const std::wstring& file, std::wstring& out, std::wstring& err) {
@@ -755,12 +937,51 @@ JsonPtr BuildResolvedJson(const Ruleset& rs, const std::vector<AdapterInfo>& ada
     return root;
 }
 
+// Zeitmarke einer Datei als eine Zahl (100-Nanosekunden-Seit 1601).
+static unsigned long long Stamp(const FILETIME& t) {
+    return (static_cast<unsigned long long>(t.dwHighDateTime) << 32) | t.dwLowDateTime;
+}
+
+// Schreiben und dabei sicherstellen, dass die Zeitmarke der Datei gegenueber der
+// alten Datei faellt. Gebundene Programme entscheiden ueber diese Marke, ob sie
+// erneut lesen; zwei Schreiben koennen auf dieselbe Marke fallen, weil die Uhr
+// nur etwa alle 16 ms weitergeht. Dann bliebe eine aenderte Entscheidung blind.
+static bool WriteStamped(const std::wstring& file, const std::wstring& text,
+                         std::wstring& err) {
+    FILETIME vorher = {};
+    const HANDLE alt = CreateFileW(file.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                   nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (alt != INVALID_HANDLE_VALUE) {
+        GetFileTime(alt, nullptr, nullptr, &vorher);
+        CloseHandle(alt);
+    }
+    if (!WriteTextFileAtomic(file, text, err)) return false;
+
+    if (vorher.dwHighDateTime || vorher.dwLowDateTime) {
+        const HANDLE h = CreateFileW(file.c_str(), FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                     nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h != INVALID_HANDLE_VALUE) {
+            FILETIME jetzt = {};
+            GetFileTime(h, nullptr, nullptr, &jetzt);
+            if (Stamp(jetzt) <= Stamp(vorher)) {
+                const unsigned long long weiter = Stamp(vorher) + 10000;   // 1 ms spaeter
+                FILETIME ziel{};
+                ziel.dwLowDateTime = static_cast<DWORD>(weiter);
+                ziel.dwHighDateTime = static_cast<DWORD>(weiter >> 32);
+                SetFileTime(h, nullptr, nullptr, &ziel);
+            }
+            CloseHandle(h);
+        }
+    }
+    return true;
+}
+
 bool WriteResolved(const Paths& p, const Ruleset& rs, const std::vector<AdapterInfo>& adapters,
                    std::vector<std::wstring>& problems, std::wstring& err) {
     problems.clear();
     JsonPtr doc = BuildResolvedJson(rs, adapters, 0, problems);
     const std::wstring text = JsonSerialize(doc, false) + L"\r\n";
-    return WriteTextFileAtomic(p.resolvedFile, text, err);
+    return WriteStamped(p.resolvedFile, text, err);
 }
 
 bool ParseResolvedDoc(const std::wstring& text, JsonPtr& out) {
@@ -1589,12 +1810,84 @@ int Engine::ReinjectMatching(std::wstring& err) {
     return ReinjectMatching(err, already, failed);
 }
 
+// Meldungen nur einmal anzeigen, der Prüfschlauf läuft häufig.
+static void Merken(std::vector<std::wstring>& liste, const std::wstring& text) {
+    for (const std::wstring& s : liste) if (s == text) return;
+    liste.push_back(text);
+}
+
+// Bringt die Hook-Bibliotheken in den eigenen Unterordner und vergleicht jede Datei mit dem
+// Exemplar neben der Programmdatei. Nur was danach gleich ist, wird angebunden: ein Programm
+// mit Administratorrechten darf keine Bibliothek einschleusen, die jemand anderes geändert hat.
+bool Engine::VerifyHooks(const std::wstring& trustedDir, std::wstring& err) {
+    err.clear();
+    hooksTrusted = false;
+
+    std::wstring ordner;
+    if (!EnsureDir(paths.hookDir, ordner)) { err = ordner; lastError = ordner; return false; }
+
+    // Dateien der alten Ablage direkt im Datenordner: die kann jeder Benutzer ersetzen,
+    // deshalb weg damit. Der Unterordner unten ist der einzige Ort, aus dem angebunden wird.
+    static const wchar_t* namen[] = { L"hook.dll", L"hook32.dll" };
+    for (int i = 0; i < 2; ++i) {
+        const std::wstring alt = paths.dir + L"\\" + namen[i];
+        if (FileExists(alt)) DeleteFileW(alt.c_str());
+    }
+
+    const std::wstring ziel[2] = { paths.hookDll, paths.hookDll32 };
+    for (int i = 0; i < 2; ++i) {
+        const std::wstring vorlage = trustedDir.empty() ? std::wstring() : trustedDir + L"\\" + namen[i];
+        if (vorlage.empty() || !FileExists(vorlage)) {
+            if (err.empty()) err = std::wstring(Tr(L"Hook-Bibliothek fehlt neben der Programmdatei: ")) + namen[i];
+            lastError = err;
+            return false;
+        }
+        std::wstring fehler, unveraendert, aktuell;
+        if (!HashFile(vorlage, unveraendert, fehler)) {
+            if (err.empty()) err = std::wstring(namen[i]) + L": " + fehler;
+            lastError = err;
+            return false;
+        }
+        bool erneuern = true;
+        if (FileExists(ziel[i]) && HashFile(ziel[i], aktuell, fehler) && aktuell == unveraendert)
+            erneuern = false;
+        if (!erneuern) continue;
+
+        if (!CopyFileW(vorlage.c_str(), ziel[i].c_str(), FALSE)) {
+            const DWORD code = GetLastError();
+            std::wstring warum = LastErrText(code);
+            if (code == ERROR_SHARING_VIOLATION || code == ERROR_ACCESS_DENIED)
+                warum += Tr(L" - RoutePerApp beenden und die gebundenen Programme neu starten");
+            if (err.empty()) err = std::wstring(namen[i]) + Tr(L" konnte nicht erneuert werden: ") + warum;
+            lastError = err;
+            return false;
+        }
+        if (!HashFile(ziel[i], aktuell, fehler) || aktuell != unveraendert) {
+            if (err.empty()) err = std::wstring(Tr(L"Hook-Bibliothek passt nicht zur Datei neben dem Programm: ")) + namen[i];
+            lastError = err;
+            return false;
+        }
+    }
+    if (!err.empty()) { lastError = err; return false; }
+
+    // Erst jetzt, nach dem Kopieren: ohne Administratorrechte ist der Schutz nicht zu setzen,
+    // und ohne Administratorrechte wird auch nichts angebunden.
+    if (elevated) {
+        std::wstring schutz;
+        if (!HardenFolder(paths.hookDir, schutz))
+            Merken(problems, Tr(L"Der Hook-Ordner bleibt angreifbar: ") + schutz);
+    }
+    hooksTrusted = true;
+    return true;
+}
+
 int Engine::ReinjectMatching(std::wstring& err, int& alreadyOut, int& failedOut) {
     err.clear();
     alreadyOut = 0;
     failedOut = 0;
     int done = 0;
     if (!elevated) { err = Tr(L"ohne Administratorrechte keine Anbindung möglich"); return 0; }
+    if (!VerifyHooks(CurrentExeDir(), err)) return 0;
     const bool hook64 = FileExists(paths.hookDll);
     const bool hook32 = FileExists(paths.hookDll32);
     std::wstring firstError;

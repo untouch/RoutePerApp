@@ -6,6 +6,6 @@
 #define IDR_LANG_EN 102
 
 // Fassung: RPA_VERSION für die Datei-Eigenschaften, RPA_VERSION_TEXT für Titel und "Über".
-#define RPA_VERSION 1, 1, 0, 0
-#define RPA_VERSION_TEXT "1.1"
-#define RPA_VERSION_TEXT_W L"1.1"
+#define RPA_VERSION 1, 2, 0, 0
+#define RPA_VERSION_TEXT "1.2"
+#define RPA_VERSION_TEXT_W L"1.2"

@@ -175,6 +175,7 @@ struct Paths {
     std::wstring dir;
     std::wstring rulesFile;
     std::wstring resolvedFile;
+    std::wstring hookDir;       // eigener Unterordner: normale Programme duerfen hier nicht schreiben
     std::wstring hookDll;       // 64-Bit-Hook für 64-Bit-Programme
     std::wstring hookDll32;     // 32-Bit-Hook für 32-Bit-Programme
     std::wstring logFile;
@@ -183,6 +184,10 @@ struct Paths {
 Paths DefaultPaths();
 Paths MakePaths(const std::wstring& dir);
 bool EnsureDir(const std::wstring& dir, std::wstring& err);
+std::wstring CurrentExeDir();                       // Ordner der eigenen Programmdatei
+bool HashFile(const std::wstring& file, std::wstring& hex, std::wstring& err);
+bool HardenFolder(const std::wstring& dir, std::wstring& err);
+bool FolderIsHardened(const std::wstring& dir);
 bool ReadTextFile(const std::wstring& file, std::wstring& out, std::wstring& err);
 bool WriteTextFileAtomic(const std::wstring& file, const std::wstring& content, std::wstring& err);
 bool FileExists(const std::wstring& file);
@@ -276,6 +281,7 @@ public:
     std::wstring lastError;
     std::vector<std::wstring> problems;
     bool elevated = false;
+    bool hooksTrusted = false;                  // Hook-Dateien geprüft und unverändert
 
     void RefreshAdapters();
     void RefreshProcesses();
@@ -283,6 +289,10 @@ public:
     bool Publish();                       // resolved.json schreiben
     bool SaveAndPublish(std::wstring& err);
     bool ReloadIfChanged(std::wstring& err); // externe Änderung der rules.json übernehmen
+    // Bringt die Hook-Bibliotheken in den sicheren Unterordner und vergleicht sie mit den
+    // Exemplaren neben der Programmdatei. Falsch heißt: einer Anbindung wird nicht vertraut.
+    bool VerifyHooks(const std::wstring& trustedDir, std::wstring& err);
+    bool HooksTrusted() const { return hooksTrusted; }
     bool Assign(const std::wstring& image, const std::wstring& path, RouteMode mode,
                 const std::wstring& adapterGuid, std::wstring& err);
     bool ClearAssignment(unsigned long long ruleId, std::wstring& err);

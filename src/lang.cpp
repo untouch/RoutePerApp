@@ -157,7 +157,7 @@ const wchar_t* T(const wchar_t* source) {
     if (g_usedSeen.insert(key).second) g_used.push_back(key);
     if (g_code == L"de") return source;
     const auto it = g_map.find(key);
-    if (it != g_map.end()) return Keep(it->second);
+    if (it != g_map.end() && !it->second.empty()) return Keep(it->second);
     if (g_missingSeen.insert(key).second) g_missing.push_back(key);
     return source;
 }
@@ -206,6 +206,17 @@ std::wstring Fill(const wchar_t* key, int n, int m) { return Format(key, L"", L"
 std::vector<std::wstring> MissingKeys() { return g_missing; }
 size_t MissCount() { return g_missing.size(); }
 void ForgetMissing() { g_missing.clear(); g_missingSeen.clear(); }
+
+std::vector<std::wstring> Untranslated() {
+    // Jeder gebrauchte Text muss eine Uebersetzung haben - auch einer, der erst
+    // auf einem bestimmten Weg auftaucht (Adapter getrennt, Hook verwaechselt).
+    std::vector<std::wstring> out;
+    for (const std::wstring& key : g_used) {
+        const auto it = g_map.find(key);
+        if (it == g_map.end() || it->second.empty()) out.push_back(key);
+    }
+    return out;
+}
 
 bool MergeFile(const std::wstring& path, std::wstring* problem) {
     std::wstring text;

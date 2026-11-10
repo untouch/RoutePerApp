@@ -13,7 +13,7 @@
 <p align="center">
   <a href="#build"><img src="https://img.shields.io/badge/build-MSVC%20C%2B%2B17-blue" alt="Build: MSVC C++17"></a>
   <a href="#build"><img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue" alt="Platform: Windows 10 or 11"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.1-informational" alt="Version 1.1"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.2-informational" alt="Version 1.2"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License: GPL-3.0"></a>
 </p>
 
@@ -85,7 +85,8 @@ The interface is available in German and English, switched from a menu.
 
 Or build it yourself in one command (see [Build](#build)); the source, the tests and the build
 script are all here, and nothing is downloaded while building. If you build, keep all three files
-together - the program copies both helpers into `C:\ProgramData\RoutePerApp` on first start.
+in one folder - the program takes its helpers from its own folder and copies them into a protected
+subfolder of its own.
 
 The files are not signed, and the program injects helper DLLs into other processes. Anti-virus
 products can react to exactly that pattern, which is why [Security](SECURITY.md) states plainly
@@ -128,15 +129,16 @@ C:\ProgramData\RoutePerApp\
   rules.json        assignments, edited by the interface, reloaded on content change
   rules.json.bak    previous copy, used if the live file is damaged
   resolved.json     what the engine decided, read by the helper DLL
-  hook.dll          helper for 64-bit targets
-  hook32.dll        helper for 32-bit targets
+  hooks\hook.dll    helper for 64-bit targets, copied from the program folder and checked by hash
+  hooks\hook32.dll  helper for 32-bit targets
   settings.json     window state, language, autostart and shortcut switches
   language.en.json  optional translation override, see Language
   selbsttest.log    result of the built-in self-test
 ```
 
-Both helpers are copied next to `routeperapp.exe` on first start; the interface keeps them up to
-date when you build again.
+The `hooks` folder is the only place a helper is ever read from. RoutePerApp copies both helpers
+there from its own folder, compares both by SHA-256, and refuses to inject when a file is missing
+or differs. Ordinary accounts cannot write that folder; [Security](SECURITY.md) has the details.
 
 ## Common questions
 
@@ -321,9 +323,9 @@ edited in the interface, and `rules.json` is the file the engine reloads on chan
 
 ## Changes
 
-[CHANGELOG.md](CHANGELOG.md) - version 1.1 added the English interface and the language files,
-made the self-test check the translation completely, and fixed adapter classification in the
-English interface.
+[CHANGELOG.md](CHANGELOG.md) - version 1.2 guards the injected helper files with hash checks and a
+closed folder; version 1.1 added the English interface, the language files, and adapter
+classification that no longer depends on the interface language.
 
 ## License
 

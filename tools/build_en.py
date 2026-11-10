@@ -159,6 +159,19 @@ T = {
     'Sprache Englisch: Knopfueberschrift uebersetzt': 'English language: button caption translated',
     'Sprache Englisch: Spaltenkopf uebersetzt': 'English language: column header translated',
     'Sprache Englisch: keine Beschriftung ohne Uebersetzung': 'English language: no label left untranslated',
+    # Hook-Schutz: gebunden wird nur nach Vergleich mit der Datei neben dem Programm
+    'Hook-Bibliothek fehlt neben der Programmdatei: ': 'the hook library is missing next to the program file: ',
+    'Hook-Bibliothek passt nicht zur Datei neben dem Programm: ': 'the hook library does not match the file next to the program: ',
+    ' konnte nicht erneuert werden: ': ' could not be renewed: ',
+    ' - RoutePerApp beenden und die gebundenen Programme neu starten': ' - quit RoutePerApp and restart the programs it bound',
+    'Der Hook-Ordner bleibt angreifbar: ': 'the hook folder stays open to attack: ',
+    'Benutzerkennungen nicht vorbereitet: ': 'could not prepare the account identifiers: ',
+    'Zugriffsliste nicht gebaut: ': 'could not build the access list: ',
+    'Ordnerschutz nicht gesetzt: ': 'could not set the folder protection: ',
+    'Hooks: ohne Vorlage wird nichts angebunden': 'Hook guard: nothing is injected without the original file',
+    'Hooks: Vorlagen neben dem Programm sind unveraendert': 'Hook guard: the originals next to the program are unchanged',
+    'Hooks: Ordner ist gegen normale Benutzer geschlossen': 'Hook guard: folder closed against ordinary users',
+
 }
 
 raw = io.open(TEMPLATE, encoding='utf-8-sig').read()
